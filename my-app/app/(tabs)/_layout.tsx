@@ -1,9 +1,12 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
+import Navigation from "../../components/Navigation";
 
 export default function TabLayout() {
   return (
+    <>
+      <Navigation />
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -20,5 +23,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }

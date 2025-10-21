@@ -1,19 +1,29 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "./context/AuthContext"; // ✅ sửa lại đúng đường dẫn
 
 const API_URL = process.env.EXPO_PUBLIC_STRAPI_URL || "http://127.0.0.1:1337";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { login } = useAuth();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin() {
+  const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("⚠️ Missing info", "Please fill out all fields");
+      Alert.alert("⚠️ Missing Info", "Please enter your email and password.");
       return;
     }
 
@@ -34,20 +44,17 @@ export default function LoginScreen() {
         throw new Error(data?.error?.message || "Invalid credentials");
       }
 
-      // ✅ Lưu JWT & user info
-      await AsyncStorage.setItem("jwt", data.jwt);
-      await AsyncStorage.setItem("user", JSON.stringify(data.user));
+      // ✅ Gọi hàm login từ AuthContext (đã tự lưu AsyncStorage)
+      await login(data.user, data.jwt);
 
       Alert.alert("✅ Success", `Welcome back, ${data.user.username}!`);
-
-      // ✅ Điều hướng sang trang chủ
-      router.push("/");
+      router.push("/(tabs)"); // chuyển vào tab layout
     } catch (err: any) {
       Alert.alert("❌ Login Failed", err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
     <View style={styles.container}>
@@ -78,7 +85,7 @@ export default function LoginScreen() {
         )}
       </Pressable>
 
-      <Pressable onPress={() => router.push("./register")}>
+      <Pressable onPress={() => router.push("/register")}>
         <Text style={styles.link}>Don’t have an account? Register</Text>
       </Pressable>
     </View>

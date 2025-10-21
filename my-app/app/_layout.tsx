@@ -1,19 +1,14 @@
 import { Stack } from "expo-router";
-import { View, StyleSheet } from "react-native";
-import Navigation from "../components/Navigation";
+import { AuthProvider } from "../app/context/AuthContext";
 
 export default function RootLayout() {
   return (
-    <View style={styles.container}>
-      <Navigation />
-      <Stack screenOptions={{ headerShown: false }} />
-    </View>
+    <AuthProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" /> {/* Tab layout */}
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register" />
+      </Stack>
+    </AuthProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-});
