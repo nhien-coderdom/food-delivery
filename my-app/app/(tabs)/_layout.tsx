@@ -1,28 +1,17 @@
+import { View } from "react-native";
 import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import React from "react";
-import Navigation from "../../components/Navigation";
+import Navbar from "../../components/Navigation";
 
-export default function TabLayout() {
+export default function TabsLayout() {
   return (
-    <>
-      <Navigation />
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#16a34a",
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" color={color} size={size} />
-          ),
-        }}
-      />
-    </Tabs>
-    </>
+    <View style={{ flex: 1 }}>
+      <Navbar />
+
+      <Tabs screenOptions={{ headerShown: false }}>
+        <Tabs.Screen name="index" />
+        <Tabs.Screen name="orders" />
+        <Tabs.Screen name="profile" />
+      </Tabs>
+    </View>
   );
 }

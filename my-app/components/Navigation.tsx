@@ -8,17 +8,22 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useState } from "react";
-import { useAuth } from "../app/context/AuthContext";
+import { useUser, useAuth } from "@clerk/clerk-expo";
 
 export default function Navigation() {
-  const { user, logout } = useAuth();
+  const { isSignedIn, signOut } = useAuth();
+  const { user } = useUser();
   const router = useRouter();
   const [dropdownVisible, setDropdownVisible] = useState(false);
 
   const handleLogout = async () => {
-    await logout();
-    setDropdownVisible(false);
-    router.push("/login");
+    try {
+      await signOut();
+      setDropdownVisible(false);
+      router.replace("/auth/login");
+    } catch (error) {
+      console.error("❌ Logout failed:", error);
+    }
   };
 
   return (
@@ -41,28 +46,27 @@ export default function Navigation() {
             </Pressable>
           </Link>
 
-          {!user ? (
+          {!isSignedIn ? (
             <>
-              <Link href="/login" asChild>
+              <Link href="/auth/login" asChild>
                 <Pressable style={styles.loginButton}>
                   <Text style={styles.loginText}>Log In</Text>
                 </Pressable>
               </Link>
 
-              <Link href="/register" asChild>
+              <Link href="/auth/register" asChild>
                 <Pressable style={styles.signupButton}>
                   <Text style={styles.signupText}>Sign Up</Text>
                 </Pressable>
               </Link>
             </>
           ) : (
-            /* ✅ Nếu đã login → avatar + dropdown */
             <View style={styles.avatarContainer}>
               <Pressable onPress={() => setDropdownVisible(!dropdownVisible)}>
                 <Image
                   source={{
                     uri:
-                      user.avatar ||
+                      user?.imageUrl ||
                       "https://th.bing.com/th/id/R.0b418159b4540fdece9a68e844c88f35?rik=KrMnTlXwi7A7wg&riu=http%3a%2f%2fthanhcongfarm.com%2fwp-content%2fuploads%2f2022%2f05%2fanh-con-vit-cam-dao-31.jpg&ehk=ANYgsHSlYQsSUDVdGKrO%2f1X7tRDmMsAkXm41B2ZXzTg%3d&risl=&pid=ImgRaw&r=0",
                   }}
                   style={styles.avatar}
@@ -71,7 +75,7 @@ export default function Navigation() {
 
               {dropdownVisible && (
                 <>
-                  {/* overlay: click ra ngoài tắt dropdown */}
+                  {/* overlay để tắt dropdown */}
                   <TouchableWithoutFeedback
                     onPress={() => setDropdownVisible(false)}
                   >
@@ -79,12 +83,17 @@ export default function Navigation() {
                   </TouchableWithoutFeedback>
 
                   <View style={styles.dropdown}>
-                    <Text style={styles.dropdownName}>{user.username}</Text>
+                    <Text style={styles.dropdownName}>
+                      {user?.username ||
+                        user?.firstName ||
+                        user?.emailAddresses?.[0]?.emailAddress ||
+                        "User"}
+                    </Text>
 
                     <Pressable
                       onPress={() => {
                         setDropdownVisible(false);
-                        router.push("/(tabs)");
+                        router.push("/(tabs)/profile");
                       }}
                       style={styles.dropdownItem}
                     >
@@ -117,7 +126,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
-    zIndex: 20, // ✅ để dropdown luôn nổi
+    zIndex: 20,
   },
   inner: {
     flexDirection: "row",
@@ -163,8 +172,6 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
   },
-
-  /* Avatar & Dropdown */
   avatarContainer: {
     position: "relative",
   },
