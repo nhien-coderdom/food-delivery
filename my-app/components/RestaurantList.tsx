@@ -25,7 +25,6 @@ export default function RestaurantList({ query = "" }) {
 
         console.log("🍔 Strapi data:", json);
 
-        // Strapi v5 trả dữ liệu phẳng (không có attributes)
         setRestaurants(Array.isArray(json.data) ? json.data : []);
       } catch (err: any) {
         console.error("❌ Error fetching restaurants:", err);
