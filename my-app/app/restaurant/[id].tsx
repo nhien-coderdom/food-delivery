@@ -10,10 +10,15 @@ import {
   Dimensions,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+<<<<<<< HEAD
 import { Ionicons } from "@expo/vector-icons";
 import Navbar from "../../components/Navigation";
 
 const API_URL = process.env.EXPO_PUBLIC_STRAPI_URL || "http://127.0.0.1:1337";
+=======
+import { API_URL, getImageUrl } from "@/lib/apiConfig";
+import { shadows } from "@/lib/shadowStyles";
+>>>>>>> 39f333d (Update)
 
 // Format tiền VND
 const formatVND = (num: number) =>
@@ -91,6 +96,7 @@ export default function RestaurantDetail() {
           />
         </View>
 
+<<<<<<< HEAD
         {/* 🏠 Thông tin nhà hàng */}
         <View style={styles.headerContent}>
           <Text style={styles.name}>{restaurant.name}</Text>
@@ -143,6 +149,22 @@ export default function RestaurantDetail() {
               return (
                 <View key={dish.id} style={[styles.dishCard, { width: cardWidth }]}>
                   <Image source={{ uri: imgUrl }} style={styles.dishImage} resizeMode="cover"/>
+=======
+      {dishes.length === 0 ? (
+        <Text style={styles.noDish}>No dishes found.</Text>
+      ) : (
+        <View style={styles.dishList}>
+          {dishes.map((dish: any) => {
+            const imgUrl = getImageUrl(dish.image?.url);
+            return (
+              <View key={dish.id} style={styles.card}>
+                <Image 
+                  source={{ uri: imgUrl }} 
+                  style={styles.image}
+                  resizeMode="cover"
+                />
+                <View style={styles.info}>
+>>>>>>> 39f333d (Update)
                   <Text style={styles.dishName}>{dish.name}</Text>
                   {dish.price && (
                     <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
@@ -178,7 +200,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+<<<<<<< HEAD
   imageWrapper: {
+=======
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    textAlign: "center",
+    color: "#16a34a",
+    marginBottom: 20,
+  },
+  noDish: {
+    textAlign: "center",
+    color: "#6b7280",
+  },
+  dishList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  card: {
+    width: 340,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 16,
+    margin: 8,
+    overflow: "hidden",
+    ...shadows.card,
+  },
+  image: {
+>>>>>>> 39f333d (Update)
     width: "100%",
     height: 200,
     backgroundColor: "#fff",

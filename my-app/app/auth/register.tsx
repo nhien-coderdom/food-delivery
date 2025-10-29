@@ -2,8 +2,7 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSignUp, useUser } from '@clerk/clerk-expo';
 import { useRouter, Link } from 'expo-router';
-
-const API_URL = process.env.EXPO_PUBLIC_STRAPI_URL || 'http://127.0.0.1:1337';
+import { API_URL } from '@/lib/apiConfig';
 
 export default function SignUpScreen() {
   const { isLoaded, signUp, setActive } = useSignUp();

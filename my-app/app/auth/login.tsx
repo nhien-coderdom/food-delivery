@@ -4,7 +4,7 @@ import { useSignIn, useUser } from '@clerk/clerk-expo';
 import { Link, useRouter } from 'expo-router';
 import type { UserResource } from '@clerk/types'
 import { StyleSheet } from 'react-native';
-const API_URL = process.env.EXPO_PUBLIC_STRAPI_URL || "http://127.0.0.1:1337";
+import { API_URL } from '@/lib/apiConfig';
 
 export default function SignInScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();

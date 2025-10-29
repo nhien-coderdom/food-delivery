@@ -5,16 +5,21 @@ import {
   StyleSheet,
   Image,
   TouchableWithoutFeedback,
+  Platform,
+  StatusBar,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useState } from "react";
 import { useUser, useAuth } from "@clerk/clerk-expo";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { shadows } from "@/lib/shadowStyles";
 
 export default function Navigation() {
   const { isSignedIn, signOut } = useAuth();
   const { user } = useUser();
   const router = useRouter();
   const [dropdownVisible, setDropdownVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
     try {
@@ -27,7 +32,7 @@ export default function Navigation() {
   };
 
   return (
-    <View style={styles.nav}>
+    <View style={[styles.nav, { paddingTop: insets.top + 12 }]}>
       <View style={styles.inner}>
         {/* 🥗 Logo */}
         <View style={styles.logoContainer}>
@@ -37,82 +42,6 @@ export default function Navigation() {
             </Pressable>
           </Link>
         </View>
-
-        {/* 🧭 Menu */}
-        <View style={styles.menu}>
-          <Link href="/(tabs)" asChild>
-            <Pressable>
-              <Text style={styles.menuText}>Home</Text>
-            </Pressable>
-          </Link>
-
-          {!isSignedIn ? (
-            <>
-              <Link href="/auth/login" asChild>
-                <Pressable style={styles.loginButton}>
-                  <Text style={styles.loginText}>Log In</Text>
-                </Pressable>
-              </Link>
-
-              <Link href="/auth/register" asChild>
-                <Pressable style={styles.signupButton}>
-                  <Text style={styles.signupText}>Sign Up</Text>
-                </Pressable>
-              </Link>
-            </>
-          ) : (
-            <View style={styles.avatarContainer}>
-              <Pressable onPress={() => setDropdownVisible(!dropdownVisible)}>
-                <Image
-                  source={{
-                    uri:
-                      user?.imageUrl ||
-                      "https://th.bing.com/th/id/R.0b418159b4540fdece9a68e844c88f35?rik=KrMnTlXwi7A7wg&riu=http%3a%2f%2fthanhcongfarm.com%2fwp-content%2fuploads%2f2022%2f05%2fanh-con-vit-cam-dao-31.jpg&ehk=ANYgsHSlYQsSUDVdGKrO%2f1X7tRDmMsAkXm41B2ZXzTg%3d&risl=&pid=ImgRaw&r=0",
-                  }}
-                  style={styles.avatar}
-                />
-              </Pressable>
-
-              {dropdownVisible && (
-                <>
-                  {/* overlay để tắt dropdown */}
-                  <TouchableWithoutFeedback
-                    onPress={() => setDropdownVisible(false)}
-                  >
-                    <View style={styles.overlay} />
-                  </TouchableWithoutFeedback>
-
-                  <View style={styles.dropdown}>
-                    <Text style={styles.dropdownName}>
-                      {user?.username ||
-                        user?.firstName ||
-                        user?.emailAddresses?.[0]?.emailAddress ||
-                        "User"}
-                    </Text>
-
-                    <Pressable
-                      onPress={() => {
-                        setDropdownVisible(false);
-                        router.push("/(tabs)/profile");
-                      }}
-                      style={styles.dropdownItem}
-                    >
-                      <Text style={styles.dropdownText}>Profile</Text>
-                    </Pressable>
-
-                    <View style={styles.separator} />
-
-                    <Pressable onPress={handleLogout} style={styles.dropdownItem}>
-                      <Text style={[styles.dropdownText, { color: "#dc2626" }]}>
-                        Log Out
-                      </Text>
-                    </Pressable>
-                  </View>
-                </>
-              )}
-            </View>
-          )}
-        </View>
       </View>
     </View>
   );
@@ -121,25 +50,27 @@ export default function Navigation() {
 const styles = StyleSheet.create({
   nav: {
     width: "100%",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 24,
     backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#FFE5DC",
     zIndex: 20,
   },
   inner: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
   },
   logoContainer: {
     flex: 1,
+    justifyContent: "center",
   },
   logoText: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#6b7280",
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#FF6B35",
+    letterSpacing: 0.5,
   },
   menu: {
     flexDirection: "row",
@@ -149,23 +80,26 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: "#6b7280",
+    color: "#1F2937",
+    fontWeight: "500",
   },
   loginButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FF6B35",
   },
   loginText: {
     fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
+    color: "#FF6B35",
+    fontWeight: "600",
   },
   signupButton: {
-    backgroundColor: "#22c55e",
+    backgroundColor: "#FF6B35",
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   signupText: {
     fontSize: 14,
@@ -179,6 +113,8 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#FF6B35",
   },
   overlay: {
     position: "absolute",
@@ -197,10 +133,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 8,
+    ...shadows.button,
     width: 160,
     paddingVertical: 6,
     zIndex: 2,
@@ -208,8 +141,10 @@ const styles = StyleSheet.create({
   dropdownName: {
     textAlign: "center",
     fontWeight: "600",
-    color: "#111",
+    color: "#1F2937",
     marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingTop: 6,
   },
   dropdownItem: {
     paddingVertical: 8,
@@ -217,11 +152,11 @@ const styles = StyleSheet.create({
   },
   dropdownText: {
     fontSize: 14,
-    color: "#374151",
+    color: "#1F2937",
   },
   separator: {
     height: 1,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#FFE5DC",
     marginVertical: 4,
   },
 });

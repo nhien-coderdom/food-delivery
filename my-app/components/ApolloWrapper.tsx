@@ -2,8 +2,7 @@
 import { ReactNode } from "react";
 import { ApolloClient, InMemoryCache, HttpLink } from "@apollo/client";
 import { ApolloProvider } from "@apollo/client/react"; // ✅ v5 tách riêng phần React
-
-const API_URL = process.env.NEXT_PUBLIC_STRAPI_URL || "http://127.0.0.1:1337";
+import { API_URL } from "../lib/apiConfig";
 
 const client = new ApolloClient({
   link: new HttpLink({ uri: `${API_URL}/graphql` }),

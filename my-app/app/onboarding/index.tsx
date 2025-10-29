@@ -6,16 +6,17 @@ export default function Onboarding1() {
   const router = useRouter();
   return (
     <View style={styles.container}>
-      <Image source={require("../../assets/images/react-logo.png")} style={styles.image} />
+      <Image 
+        source={require("../../assets/images/react-logo.png")} 
+        style={styles.image}
+        resizeMode="contain"
+      />
       <Text style={styles.title}>All your favorites</Text>
       <Text style={styles.subtitle}>Get all your loved foods in one place...</Text>
 
       <View style={styles.footer}>
-        <TouchableOpacity onPress={() => router.push("/onboarding/step2")} style={styles.button}>
-          <Text style={styles.buttonText}>Next</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.replace("/auth/login")}>
-          <Text style={styles.skip}>Skip</Text>
+        <TouchableOpacity onPress={() => router.replace("/auth/login")} style={styles.button}>
+          <Text style={styles.buttonText}>Get Started</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -30,5 +31,4 @@ const styles = StyleSheet.create({
   footer: { marginTop: 30, alignItems: "center" },
   button: { backgroundColor: "#FF7A00", paddingVertical: 12, paddingHorizontal: 40, borderRadius: 30 },
   buttonText: { color: "#fff", fontWeight: "600" },
-  skip: { color: "#999", marginTop: 10 },
 });
