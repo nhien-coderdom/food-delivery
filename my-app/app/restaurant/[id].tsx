@@ -10,17 +10,22 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
+import { useCart } from "@/app/context/CartContext";
+import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
+import { useRouter, type Href } from "expo-router";
 
 // Format tiền VND
 const formatVND = (num: number) =>
   num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
 
 export default function RestaurantDetail() {
+  const router = useRouter();
   const { id } = useLocalSearchParams();
   const [restaurant, setRestaurant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   useEffect(() => {
     if (!id) return;
@@ -68,6 +73,12 @@ export default function RestaurantDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
+      {/* Back to Home */}
+      <View style={{ padding: 12 }}>
+        <Pressable onPress={() => router.replace("/(tabs)" as Href)} style={styles.backBtn}>
+          <Text style={styles.backText}>{"«"}</Text>
+        </Pressable>
+      </View>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>{restaurant.name}</Text>
         <Text style={styles.description}>{restaurant.description}</Text>
@@ -78,6 +89,7 @@ export default function RestaurantDetail() {
           <View style={styles.dishList}>
             {dishes.map((dish: any) => {
               const imgUrl = getImageUrl(dish.image?.url);
+              const qty = getItemQuantity(restaurant.id, dish.id);
               return (
                 <View key={dish.id} style={styles.card}>
                   <Image 
@@ -90,12 +102,33 @@ export default function RestaurantDetail() {
                     {dish.price && (
                       <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
                     )}
-                    <Pressable
-                      onPress={() => alert(`Added ${dish.name} to cart`)}
-                      style={styles.addButton}
-                    >
-                      <Text style={styles.addButtonText}>Add to Cart</Text>
-                    </Pressable>
+                    {qty === 0 ? (
+                      <Pressable
+                        onPress={() =>
+                          addItem({
+                            dishId: dish.id,
+                            name: dish.name,
+                            price: dish.price ?? 0,
+                            restaurantId: restaurant.id,
+                            restaurantName: restaurant.name,
+                            image: imgUrl,
+                          })
+                        }
+                        style={styles.addButton}
+                      >
+                        <Text style={styles.addButtonText}>Thêm</Text>
+                      </Pressable>
+                    ) : (
+                      <View style={styles.stepper}>
+                        <Pressable style={styles.stepBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty - 1)}>
+                          <Text style={styles.stepText}>–</Text>
+                        </Pressable>
+                        <Text style={styles.qtyText}>{qty}</Text>
+                        <Pressable style={styles.stepBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty + 1)}>
+                          <Text style={styles.stepText}>+</Text>
+                        </Pressable>
+                      </View>
+                    )}
                   </View>
                 </View>
               );
@@ -103,11 +136,21 @@ export default function RestaurantDetail() {
           </View>
         )}
       </ScrollView>
+  <CartBar />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backText: { fontSize: 24, fontWeight: "800", color: "#111827" },
   container: {
     paddingBottom: 40,
     backgroundColor: "#fff",
@@ -177,5 +220,30 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "#E5F5F0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepText: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#10B981",
+  },
+  qtyText: {
+    minWidth: 24,
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
   },
 });

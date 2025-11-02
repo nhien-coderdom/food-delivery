@@ -1,6 +1,7 @@
-module.exports = {
+module.exports = ({ env }) => ({
+  // Nếu không dùng GraphQL nữa thì xoá block này hoặc để vậy cũng không sao
   graphql: {
-    enabled: true,
+    enabled: false, // bạn nói không dùng nữa, mình tắt luôn
     config: {
       defaultLimit: 10,
       maxLimit: 20,
@@ -9,14 +10,20 @@ module.exports = {
       },
     },
   },
+
   upload: {
     config: {
+      provider: "@strapi/provider-upload-cloudinary",
       providerOptions: {
-        localServer: {
-          maxage: 300000
-        },
+        cloud_name: env("CLOUDINARY_NAME"),
+        api_key: env("CLOUDINARY_KEY"),
+        api_secret: env("CLOUDINARY_SECRET"),
       },
-      sizeLimit: 250 * 1024 * 1024, // 250mb
+      actionOptions: {
+        upload: {},
+        delete: {},
+      },
+      sizeLimit: 250 * 1024 * 1024, // 250 mb
     },
   },
-};
+});

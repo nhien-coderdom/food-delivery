@@ -3,6 +3,9 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
 import SyncClerkUser from "../components/SyncClerkUser";
+import { CartProvider } from "./context/CartContext";
+import { AddressProvider } from "./context/AddressContext";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Suppress development warnings
 if (__DEV__) {
@@ -67,8 +70,14 @@ export default function RootLayout() {
       publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
       tokenCache={tokenCache}
     >
-      <SyncClerkUser />
-      <AuthGate />
+      <SafeAreaProvider>
+        <AddressProvider>
+          <CartProvider>
+            <SyncClerkUser />
+            <AuthGate />
+          </CartProvider>
+        </AddressProvider>
+      </SafeAreaProvider>
     </ClerkProvider>
   );
 }

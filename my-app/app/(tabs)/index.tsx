@@ -10,6 +10,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import RestaurantList from "../../components/RestaurantList";
+import DeliverTo from "@/components/DeliverTo";
+import { useCart } from "@/app/context/CartContext";
+import { Link, Href } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { shadows } from "@/lib/shadowStyles";
 
@@ -17,6 +20,11 @@ const categories = [
   { id: "all", name: "All", icon: "flame" as const },
   { id: "hotdog", name: "Hot Dog", icon: "fast-food" as const },
   { id: "burger", name: "Burger", icon: "fast-food-outline" as const },
+  { id: "pizza", name: "Pizza", icon: "pizza" as const },
+  { id: "sushi", name: "Sushi", icon: "fish" as const },
+  { id: "coffee", name: "Coffee", icon: "cafe" as const },
+  { id: "dessert", name: "Dessert", icon: "ice-cream" as const },
+  { id: "drinks", name: "Drinks", icon: "wine" as const },
 ];
 
 export default function HomePage() {
@@ -43,27 +51,29 @@ export default function HomePage() {
     }
   };
 
+  const { itemCount } = useCart();
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.deliverTo}>DELIVER TO</Text>
-            <TouchableOpacity style={styles.locationRow}>
-              <Text style={styles.location}>Halal Lab office</Text>
-              <Ionicons name="chevron-down" size={16} color="#FF6B35" />
-            </TouchableOpacity>
+            <DeliverTo />
           </View>
-          <TouchableOpacity style={styles.profileButton}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>2</Text>
-            </View>
-            <Ionicons name="cart" size={28} color="#1F2937" />
-          </TouchableOpacity>
+          <Link href={("/cart" as Href)} asChild>
+            <TouchableOpacity style={styles.profileButton}>
+              {itemCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{itemCount}</Text>
+                </View>
+              )}
+              <Ionicons name="cart" size={28} color="#1F2937" />
+            </TouchableOpacity>
+          </Link>
         </View>
 
-        <Text style={styles.greeting}>Hey {firstName}, {getGreeting()}! 👋</Text>
+        <Text style={styles.greeting}>Hi {firstName}, {getGreeting()}! 👋</Text>
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -155,23 +165,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  deliverTo: {
-    fontSize: 11,
-    color: "#FF6B35",
-    fontWeight: "600",
-    letterSpacing: 1,
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  location: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginRight: 4,
-  },
+  deliverTo: { fontSize: 14, color: "#FF6B35", fontWeight: "600", letterSpacing: 1 },
   profileButton: {
     width: 40,
     height: 40,
@@ -197,7 +191,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   greeting: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "400",
     color: "#1F2937",
     marginBottom: 20,
