@@ -4,15 +4,15 @@
   "info": {
     "singularName": "dish",
     "pluralName": "dishes",
-    "displayName": "dish"
+    "displayName": "Dishes"
   },
   "options": {
-    "draftAndPublish": true
+    "draftAndPublish": false
   },
   "pluginOptions": {},
   "attributes": {
     "name": {
-      "type": "text"
+      "type": "string"
     },
     "description": {
       "type": "text"
@@ -34,6 +34,12 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::restaurant.restaurant",
+      "inversedBy": "dishes"
+    },
+    "category": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::category.category",
       "inversedBy": "dishes"
     }
   }

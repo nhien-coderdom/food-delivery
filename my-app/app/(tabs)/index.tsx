@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,40 +15,54 @@ import { useCart } from "@/app/context/CartContext";
 import { Link, Href } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { shadows } from "@/lib/shadowStyles";
-
-const categories = [
-  { id: "all", name: "All", icon: "flame" as const },
-  { id: "hotdog", name: "Hot Dog", icon: "fast-food" as const },
-  { id: "burger", name: "Burger", icon: "fast-food-outline" as const },
-  { id: "pizza", name: "Pizza", icon: "pizza" as const },
-  { id: "sushi", name: "Sushi", icon: "fish" as const },
-  { id: "coffee", name: "Coffee", icon: "cafe" as const },
-  { id: "dessert", name: "Dessert", icon: "ice-cream" as const },
-  { id: "drinks", name: "Drinks", icon: "wine" as const },
-];
+import { API_URL } from "@/lib/apiConfig";
 
 export default function HomePage() {
-  const { user, isLoaded } = useUser();
+  const { user } = useUser();
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // Lấy tên từ nhiều nguồn
-  const firstName = 
-    user?.firstName || 
-    user?.username || 
-    user?.emailAddresses?.[0]?.emailAddress?.split('@')[0] || 
+  // ✅ Category state (lấy từ Strapi)
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await fetch(`${API_URL}/api/categories`);
+        const json = await res.json();
+
+        console.log("📦 Categories from Strapi:", json);
+
+        const formatted = json.data.map((c: any) => ({
+          id: c.documentId,
+          name: c.Name || c.name,
+          icon: c.icon || "fast-food-outline",
+        }));
+
+        // ✅ Add "All" manually
+        setCategories([{ id: "all", name: "All", icon: "flame" }, ...formatted]);
+      } catch (e) {
+        console.log("❌ Fetch categories error:", e);
+      } finally {
+        setLoadingCategories(false);
+      }
+    }
+
+    fetchCategories();
+  }, []);
+
+  const firstName =
+    user?.firstName ||
+    user?.username ||
+    user?.emailAddresses?.[0]?.emailAddress?.split("@")[0] ||
     "Friend";
 
-  // Xác định buổi trong ngày
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) {
-      return "Good Morning"; // Buổi sáng (5h-12h)
-    } else if (hour >= 12 && hour < 18) {
-      return "Good Afternoon"; // Buổi chiều (12h-18h)
-    } else {
-      return "Good Evening"; // Buổi tối (18h-5h)
-    }
+    if (hour >= 5 && hour < 12) return "Good Morning";
+    if (hour >= 12 && hour < 18) return "Good Afternoon";
+    return "Good Evening";
   };
 
   const { itemCount } = useCart();
@@ -61,6 +75,7 @@ export default function HomePage() {
           <View>
             <DeliverTo />
           </View>
+
           <Link href={("/cart" as Href)} asChild>
             <TouchableOpacity style={styles.profileButton}>
               {itemCount > 0 && (
@@ -73,16 +88,13 @@ export default function HomePage() {
           </Link>
         </View>
 
-        <Text style={styles.greeting}>Hi {firstName}, {getGreeting()}! 👋</Text>
+        <Text style={styles.greeting}>
+          Hi {firstName}, {getGreeting()}! 👋
+        </Text>
 
-        {/* Search Bar */}
+        {/* Search */}
         <View style={styles.searchContainer}>
-          <Ionicons
-            name="search"
-            size={20}
-            color="#9CA3AF"
-            style={styles.searchIcon}
-          />
+          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
           <TextInput
             placeholder="Search dishes, restaurants"
             value={query}
@@ -95,9 +107,7 @@ export default function HomePage() {
         {/* Categories */}
         <View style={styles.categoriesHeader}>
           <Text style={styles.sectionTitle}>All Categories</Text>
-          <Pressable>
-            <Text style={styles.seeAll}>See All →</Text>
-          </Pressable>
+          <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
         </View>
 
         <ScrollView
@@ -105,39 +115,41 @@ export default function HomePage() {
           showsHorizontalScrollIndicator={false}
           style={styles.categoriesScroll}
         >
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.categoryButton,
-                selectedCategory === cat.id && styles.categoryButtonActive,
-              ]}
-              onPress={() => setSelectedCategory(cat.id)}
-            >
-              <Ionicons
-                name={cat.icon}
-                size={24}
-                color={selectedCategory === cat.id ? "#FFF" : "#FF6B35"}
-              />
-              <Text
+          {loadingCategories ? (
+            <Text style={{ color: "#999" }}>Loading...</Text>
+          ) : (
+            categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
                 style={[
-                  styles.categoryText,
-                  selectedCategory === cat.id && styles.categoryTextActive,
+                  styles.categoryButton,
+                  selectedCategory === cat.id && styles.categoryButtonActive,
                 ]}
+                onPress={() => setSelectedCategory(cat.id)}
               >
-                {cat.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Ionicons
+                  name={cat.icon}
+                  size={24}
+                  color={selectedCategory === cat.id ? "#FFF" : "#FF6B35"}
+                />
+                <Text
+                  style={[
+                    styles.categoryText,
+                    selectedCategory === cat.id && styles.categoryTextActive,
+                  ]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
         </ScrollView>
       </View>
 
-      {/* Restaurant List */}
+      {/* Restaurants */}
       <View style={styles.restaurantsHeader}>
         <Text style={styles.sectionTitle}>Open Restaurants</Text>
-        <Pressable>
-          <Text style={styles.seeAll}>See All →</Text>
-        </Pressable>
+        <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
       </View>
 
       <RestaurantList query={query} category={selectedCategory} />
@@ -145,11 +157,9 @@ export default function HomePage() {
   );
 }
 
+/* ✅ Styles giữ nguyên */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
-  },
+  container: { flex: 1, backgroundColor: "#FAFAFA" },
   header: {
     backgroundColor: "#FFF",
     paddingHorizontal: 20,
@@ -165,105 +175,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  deliverTo: { fontSize: 14, color: "#FF6B35", fontWeight: "600", letterSpacing: 1 },
-  profileButton: {
-    width: 40,
-    height: 40,
-    justifyContent: "center",
-    alignItems: "center",
-    position: "relative",
-  },
+  profileButton: { width: 40, height: 40, justifyContent: "center", alignItems: "center", position: "relative" },
   badge: {
     position: "absolute",
-    top: -4,
-    right: -4,
+    top: -4, right: -4,
     backgroundColor: "#FF6B35",
     borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1,
+    width: 20, height: 20,
+    justifyContent: "center", alignItems: "center", zIndex: 1,
   },
-  badgeText: {
-    color: "#FFF",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  greeting: {
-    fontSize: 16,
-    fontWeight: "400",
-    color: "#1F2937",
-    marginBottom: 20,
-  },
+  badgeText: { color: "#FFF", fontSize: 10, fontWeight: "700" },
+  greeting: { fontSize: 16, fontWeight: "400", color: "#1F2937", marginBottom: 20 },
   searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 50,
-    marginBottom: 24,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#F3F4F6", borderRadius: 12,
+    paddingHorizontal: 16, height: 50, marginBottom: 24,
   },
-  searchIcon: {
-    marginRight: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: "#1F2937",
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  seeAll: {
-    fontSize: 14,
-    color: "#FF6B35",
-    fontWeight: "600",
-  },
+  searchIcon: { marginRight: 10 },
+  searchInput: { flex: 1, fontSize: 15, color: "#1F2937" },
+  sectionTitle: { fontSize: 17, fontWeight: "700", color: "#1F2937" },
+  seeAll: { fontSize: 14, color: "#FF6B35", fontWeight: "600" },
   categoriesHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "center", marginBottom: 16,
   },
-  categoriesScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
+  categoriesScroll: { marginHorizontal: -20, paddingHorizontal: 20, marginBottom: 8 },
   categoryButton: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "row", alignItems: "center",
     backgroundColor: "#FFF",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#FF6B35",
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderRadius: 12, marginRight: 12,
+    borderWidth: 1, borderColor: "#FF6B35",
   },
-  categoryButtonActive: {
-    backgroundColor: "#FF6B35",
-    borderColor: "#FF6B35",
-  },
-  categoryText: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#FF6B35",
-  },
-  categoryTextActive: {
-    color: "#FFF",
-  },
+  categoryButtonActive: { backgroundColor: "#FF6B35", borderColor: "#FF6B35" },
+  categoryText: { marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#FF6B35" },
+  categoryTextActive: { color: "#FFF" },
   restaurantsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 16,
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "center", paddingHorizontal: 20,
+    paddingTop: 24, paddingBottom: 16,
   },
 });
