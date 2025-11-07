@@ -8,6 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "build": "expo export:web",
     "lint": "expo lint"
   },
   "dependencies": {
@@ -43,6 +44,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
+    "serve": "^14.2.5",
     "tslib": "2.6.2"
   },
   "devDependencies": {
