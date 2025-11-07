@@ -7,243 +7,258 @@ import {
   StyleSheet,
   ActivityIndicator,
   Pressable,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
-import { useCart } from "@/app/context/CartContext";
+import { useCart } from "@/components/CartContext";
 import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-// Format tiền VND
+// Money format
 const formatVND = (num: number) =>
   num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
+
+interface CategoryChip {
+  id: string;
+  name: string;
+}
 
 export default function RestaurantDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [restaurant, setRestaurant] = useState<any>(null);
+  const [selectedCat, setSelectedCat] = useState("all");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   useEffect(() => {
-    if (!id) return;
-
     async function fetchRestaurant() {
-      try {
-        const res = await fetch(
-          `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[dishes][populate][image]=true`
-        );
-        const json = await res.json();
-        console.log("Fetched restaurant:", JSON.stringify(json, null, 2));
-        setRestaurant(json.data?.[0]);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
+      const data = await fetch(
+        `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[dishes][populate][image]=true&populate[dishes][populate][category]=true&populate[categories]=true`
+      );
+      const json = await data.json();
+      setRestaurant(json.data?.[0]);
+      setLoading(false);
     }
-
     fetchRestaurant();
   }, [id]);
 
   if (loading)
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#16a34a" />
-      </View>
-    );
+    return <ActivityIndicator style={{ marginTop: 80 }} size="large" color="#FF6B35" />;
 
-  if (error)
-    return (
-      <View style={styles.center}>
-        <Text style={{ color: "red" }}>Error: {error}</Text>
-      </View>
-    );
-
-  if (!restaurant)
-    return (
-      <View style={styles.center}>
-        <Text>Restaurant not found.</Text>
-      </View>
-    );
+  if (!restaurant) return <Text>Restaurant not found.</Text>;
 
   const dishes = restaurant.dishes || [];
+  // ✅ Get category from API restaurant.categories
+
+  const categories: CategoryChip[] = [
+    { id: "all", name: "All" },
+    ...(restaurant.categories?.map((c: any) => ({
+      id: c.id.toString(),
+      name: c.name,
+    })) || [])
+  ];
+
+  // ✅ Filter dish by category id
+  const filteredDishes =
+    selectedCat === "all"
+      ? dishes
+      : dishes.filter((d: any) => d.category?.id?.toString() === selectedCat);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* Back to Home */}
-      <View style={{ padding: 12 }}>
-        <Pressable onPress={() => router.replace("/(tabs)" as Href)} style={styles.backBtn}>
-          <Text style={styles.backText}>{"«"}</Text>
+      {/* HEADER IMAGE */}
+      <View style={styles.headerWrapper}>
+        <Image
+          source={{ uri: getImageUrl(restaurant.image?.url) }}
+          style={styles.headerImage}
+        />
+
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={22} color="#111" />
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.container}>
+
+      <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.title}>{restaurant.name}</Text>
+
+        <View style={styles.infoRow}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="star" size={14} color="#FFB800" />
+            <Text style={styles.infoText}>4.7</Text>
+          </View>
+          <View style={styles.iconBadge}>
+            <Ionicons name="bicycle" size={14} color="#10B981" />
+            <Text style={styles.infoText}>Free</Text>
+          </View>
+          <View style={styles.iconBadge}>
+            <Ionicons name="time-outline" size={14} color="#6B7280" />
+            <Text style={styles.infoText}>20 min</Text>
+          </View>
+        </View>
+
         <Text style={styles.description}>{restaurant.description}</Text>
 
-        {dishes.length === 0 ? (
-          <Text style={styles.noDish}>No dishes found.</Text>
-        ) : (
-          <View style={styles.dishList}>
-            {dishes.map((dish: any) => {
-              const imgUrl = getImageUrl(dish.image?.url);
-              const qty = getItemQuantity(restaurant.id, dish.id);
-              return (
-                <View key={dish.id} style={styles.card}>
-                  <Image 
-                    source={{ uri: imgUrl }} 
-                    style={styles.image}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.info}>
-                    <Text style={styles.dishName}>{dish.name}</Text>
-                    {dish.price && (
-                      <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
-                    )}
-                    {qty === 0 ? (
-                      <Pressable
-                        onPress={() =>
-                          addItem({
-                            dishId: dish.id,
-                            name: dish.name,
-                            price: dish.price ?? 0,
-                            restaurantId: restaurant.id,
-                            restaurantName: restaurant.name,
-                            image: imgUrl,
-                          })
-                        }
-                        style={styles.addButton}
-                      >
-                        <Text style={styles.addButtonText}>Thêm</Text>
+        {/* ✅ Category Chips from API */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginVertical: 10 }}
+          contentContainerStyle={{ gap: 10 }}
+        >
+          {categories.map((cat) => (
+            <Pressable
+              key={cat.id}
+              onPress={() => setSelectedCat(cat.id)}
+              style={[
+                styles.chip,
+                selectedCat === cat.id && styles.chipActive
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  selectedCat === cat.id && styles.chipTextActive
+                ]}
+              >
+                {cat.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {/* Dishes */}
+        <View style={styles.grid}>
+          {filteredDishes.map((dish: any) => {
+            const imgUrl = getImageUrl(dish.image?.url);
+            const qty = getItemQuantity(restaurant.id, dish.id);
+
+            return (
+              <View key={dish.id} style={styles.card}>
+                <Image source={{ uri: imgUrl }} style={styles.dishImage} />
+                <View style={styles.cardContent}>
+                  <Text style={styles.dishName}>{dish.name}</Text>
+                  <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
+
+                  {qty === 0 ? (
+                    <Pressable
+                      onPress={() =>
+                        addItem({
+                          dishId: dish.id,
+                          name: dish.name,
+                          price: dish.price ?? 0,
+                          restaurantId: restaurant.id,
+                          restaurantName: restaurant.name,
+                          image: imgUrl,
+                        })
+                      }
+                      style={styles.addBtn}
+                    >
+                      <Text style={styles.addBtnText}>+</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.qtyRow}>
+                      <Pressable style={styles.qtyBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty - 1)}>
+                        <Text style={styles.qtyText}>−</Text>
                       </Pressable>
-                    ) : (
-                      <View style={styles.stepper}>
-                        <Pressable style={styles.stepBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty - 1)}>
-                          <Text style={styles.stepText}>–</Text>
-                        </Pressable>
-                        <Text style={styles.qtyText}>{qty}</Text>
-                        <Pressable style={styles.stepBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty + 1)}>
-                          <Text style={styles.stepText}>+</Text>
-                        </Pressable>
-                      </View>
-                    )}
-                  </View>
+                      <Text style={styles.qtyNumber}>{qty}</Text>
+                      <Pressable style={styles.qtyBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty + 1)}>
+                        <Text style={styles.qtyText}>+</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
-              );
-            })}
-          </View>
-        )}
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
-  <CartBar />
+
+      <CartBar />
     </View>
   );
 }
 
+/* ---------- STYLES ---------- */
+
+const cardWidth = Platform.select({
+  web: "calc(33% - 14px)",
+  default: "100%",
+});
+
 const styles = StyleSheet.create({
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { fontSize: 24, fontWeight: "800", color: "#111827" },
-  container: {
-    paddingBottom: 40,
+  headerWrapper: { width: "100%", height: 220, position: "relative" },
+  headerImage: { width: "100%", height: "100%" },
+  backButton: {
+    position: "absolute",
+    top: 40,
+    left: 16,
     backgroundColor: "#fff",
-    padding: 16,
+    padding: 10,
+    borderRadius: 30,
+    ...shadows.small,
   },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#16a34a",
-    marginBottom: 12,
-  },
+  body: { padding: 16, paddingBottom: 100 },
+  title: { fontSize: 24, fontWeight: "700", marginTop: 10 },
+  infoRow: { flexDirection: "row", gap: 12, marginTop: 6 },
+  iconBadge: { flexDirection: "row", gap: 4, alignItems: "center" },
+  infoText: { fontSize: 13, color: "#4B5563", fontWeight: "500" },
   description: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#6b7280",
-    textAlign: "center",
-    marginBottom: 24,
+    marginTop: 10,
+    lineHeight: 20,
   },
-  noDish: {
-    textAlign: "center",
-    color: "#6b7280",
-    fontSize: 16,
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 22,
+    marginRight: 10,
   },
-  dishList: {
+  chipActive: { backgroundColor: "#FF6B35" },
+  chipText: { fontSize: 14, color: "#4B5563", fontWeight: "500" },
+  chipTextActive: { color: "#fff" },
+  grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 16,
+    gap: 12,
+    justifyContent: Platform.OS === "web" ? "flex-start" : "center",
+    marginTop: 12,
   },
   card: {
-    width: 340,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 16,
+    width: cardWidth as any,
+    backgroundColor: "#fff",
+    borderRadius: 14,
     overflow: "hidden",
     ...shadows.card,
   },
-  image: {
-    width: "100%",
-    height: 200,
-  },
-  info: {
-    padding: 12,
-  },
-  dishName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  dishPrice: {
-    fontSize: 16,
-    color: "#16a34a",
-    fontWeight: "500",
-    marginBottom: 12,
-  },
-  addButton: {
-    backgroundColor: "#16a34a",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  addButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  stepper: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  stepBtn: {
+  dishImage: { width: "100%", height: 160 },
+  cardContent: { padding: 10 },
+  dishName: { fontSize: 16, fontWeight: "600" },
+  dishPrice: { fontSize: 14, color: "#16a34a", marginVertical: 6 },
+  addBtn: {
+    backgroundColor: "#FF6B35",
     width: 36,
     height: 36,
-    borderRadius: 8,
-    backgroundColor: "#E5F5F0",
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
-  stepText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#10B981",
+  addBtnText: { color: "#fff", fontSize: 20 },
+  qtyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  qtyBtn: {
+    backgroundColor: "#F3F4F6",
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
   },
-  qtyText: {
-    minWidth: 24,
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
+  qtyText: { fontSize: 18, fontWeight: "700", color: "#FF6B35" },
+  qtyNumber: { minWidth: 24, textAlign: "center", fontSize: 15, fontWeight: "700" },
 });

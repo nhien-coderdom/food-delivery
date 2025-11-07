@@ -6,47 +6,57 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  FlatList,
   Dimensions,
   Platform,
-  ViewStyle,
-  TextStyle,
-  ImageStyle,
 } from "react-native";
 import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
 import { shadows } from "@/lib/shadowStyles";
 
-// Responsive columns based on screen width
-const getNumColumns = () => {
-  const { width } = Dimensions.get("window");
-  if (width > 1200) return 4; // Large desktop
-  if (width > 768) return 3;  // Tablet/small desktop
-  return 2;                    // Mobile
-};
+interface Category {
+  id: number;
+  name: string;
+  documentId: string;
+}
+
+interface Restaurant {
+  id: number;
+  documentId: string;
+  name: string;
+  image?: { url: string };
+  categories?: Category[];
+}
 
 interface RestaurantListProps {
   query?: string;
   category?: string;
 }
 
+const getNumColumns = () => {
+  const { width } = Dimensions.get("window");
+  if (width > 1200) return 4;
+  if (width > 768) return 3;
+  return 2;
+};
+
 export default function RestaurantList({
   query = "",
   category = "all",
 }: RestaurantListProps) {
-  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch(`${API_URL}/api/restaurants?populate=image`);
+        const res = await fetch(
+          `${API_URL}/api/restaurants?populate[image]=true&populate[dishes]=true&populate[categories]=true`
+        );
+
         const json = await res.json();
-
-        console.log("🍔 Strapi data:", json);
-
+        
         setRestaurants(Array.isArray(json.data) ? json.data : []);
       } catch (err: any) {
         console.error("❌ Error fetching restaurants:", err);
@@ -73,123 +83,70 @@ export default function RestaurantList({
       </View>
     );
 
-  if (!restaurants || restaurants.length === 0)
+  if (!restaurants.length)
     return (
       <View style={styles.center}>
-        <Ionicons name="restaurant-outline" size={64} color="#D1D5DB" />
+        <Ionicons name="restaurant-outline" size={60} color="#aaa" />
         <Text style={styles.emptyText}>No restaurants found</Text>
       </View>
     );
 
-  // ✅ Lọc theo query
-  const filtered = (restaurants || []).filter((r: any) =>
-    r?.name?.toLowerCase().includes(query.toLowerCase())
-  );
+  // ✅ New filter logic (query + category)
+  const filtered = restaurants.filter((r) => {
+    // match name search
+    const matchQuery = r?.name?.toLowerCase().includes(query.toLowerCase());
 
-  if (filtered.length === 0)
+    // if no category filter or "all"
+    if (category === "all") return matchQuery;
+
+    // ✅ match category (by documentId or name)
+    const matchCategory = r?.categories?.some(
+      (c) =>
+        c.documentId === category ||
+        c.name?.toLowerCase() === category.toLowerCase()
+    );
+
+    return matchQuery && matchCategory;
+  });
+
+  if (!filtered.length)
     return (
       <View style={styles.center}>
-        <Ionicons name="search-outline" size={64} color="#D1D5DB" />
-        <Text style={styles.emptyText}>No Restaurants Found</Text>
+        <Ionicons name="search-outline" size={60} color="#CCC" />
+        <Text style={styles.emptyText}>No restaurants match your filter</Text>
       </View>
     );
-
-  const renderRestaurant = ({ item: res }: { item: any }) => {
-    const imgUrl = getImageUrl(res?.image?.url);
-
-    // Random data cho demo (sau này sẽ lấy từ API)
-    const rating = (4.0 + Math.random() * 0.9).toFixed(1);
-    const deliveryTime = Math.floor(Math.random() * 20) + 15;
-    const isFree = Math.random() > 0.5;
-
-    return (
-      <Link href={`../restaurant/${res.documentId}`} asChild>
-        <Pressable style={styles.card}>
-          <Image 
-            source={{ uri: imgUrl }} 
-            style={styles.cardImage}
-            resizeMode="cover"
-          />
-          <View style={styles.cardContent}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.restaurantName} numberOfLines={1}>
-                {res.name || "Unnamed"}
-              </Text>
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={12} color="#FFB800" />
-                <Text style={styles.ratingText}>{rating}</Text>
-              </View>
-            </View>
-            <Text style={styles.restaurantCategory}>
-              Burger • Chiken • Riche • Wings
-            </Text>
-            <View style={styles.footer}>
-              <View style={styles.ratingContainer}>
-                <Ionicons name="star" size={14} color="#FFB800" />
-                <Text style={styles.ratingValue}>{rating}</Text>
-              </View>
-              {isFree && (
-                <View style={styles.freeBadge}>
-                  <Ionicons name="bicycle" size={14} color="#10B981" />
-                  <Text style={styles.freeText}>Free</Text>
-                </View>
-              )}
-              <View style={styles.timeContainer}>
-                <Ionicons name="time-outline" size={14} color="#6B7280" />
-                <Text style={styles.timeText}>{deliveryTime} min</Text>
-              </View>
-            </View>
-          </View>
-        </Pressable>
-      </Link>
-    );
-  };
 
   return (
     <View style={styles.container}>
       {filtered.map((res) => {
         const imgUrl = getImageUrl(res?.image?.url);
-
-        const rating = (4.0 + Math.random() * 0.9).toFixed(1);
-        const deliveryTime = Math.floor(Math.random() * 20) + 15;
-        const isFree = Math.random() > 0.5;
+        const rating = (4 + Math.random() * 0.7).toFixed(1);
+        const delivery = Math.floor(Math.random() * 20) + 15;
 
         return (
           <Link key={res.id} href={`../restaurant/${res.documentId}`} asChild>
             <Pressable style={styles.card}>
-              <Image 
-                source={{ uri: imgUrl }} 
-                style={styles.cardImage}
-                resizeMode="cover"
-              />
+              <Image source={{ uri: imgUrl }} style={styles.cardImage} />
               <View style={styles.cardContent}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.restaurantName} numberOfLines={1}>
-                    {res.name || "Unnamed"}
+                    {res.name}
                   </Text>
                   <View style={styles.ratingBadge}>
                     <Ionicons name="star" size={12} color="#FFB800" />
                     <Text style={styles.ratingText}>{rating}</Text>
                   </View>
                 </View>
+
                 <Text style={styles.restaurantCategory}>
-                  Burger • Chiken • Riche • Wings
+                  {res?.categories?.map((c) => c?.name).join(" • ") ||
+                    "No category"}
                 </Text>
+
                 <View style={styles.footer}>
-                  <View style={styles.ratingContainer}>
-                    <Ionicons name="star" size={14} color="#FFB800" />
-                    <Text style={styles.ratingValue}>{rating}</Text>
-                  </View>
-                  {isFree && (
-                    <View style={styles.freeBadge}>
-                      <Ionicons name="bicycle" size={14} color="#10B981" />
-                      <Text style={styles.freeText}>Free</Text>
-                    </View>
-                  )}
-                  <View style={styles.timeContainer}>
-                    <Ionicons name="time-outline" size={14} color="#6B7280" />
-                    <Text style={styles.timeText}>{deliveryTime} min</Text>
-                  </View>
+                  <Ionicons name="time-outline" size={14} color="#6B7280" />
+                  <Text style={styles.timeText}>{delivery} min</Text>
                 </View>
               </View>
             </Pressable>
@@ -200,148 +157,69 @@ export default function RestaurantList({
   );
 }
 
-const styles = StyleSheet.create<{
-  center: ViewStyle;
-  errorText: TextStyle;
-  emptyText: TextStyle;
-  container: ViewStyle;
-  card: ViewStyle;
-  cardImage: ImageStyle;
-  cardContent: ViewStyle;
-  cardHeader: ViewStyle;
-  ratingBadge: ViewStyle;
-  ratingText: TextStyle;
-  restaurantName: TextStyle;
-  restaurantDesc: TextStyle;
-  restaurantCategory: TextStyle;
-  footer: ViewStyle;
-  ratingContainer: ViewStyle;
-  ratingValue: TextStyle;
-  freeBadge: ViewStyle;
-  freeText: TextStyle;
-  timeContainer: ViewStyle;
-  timeText: TextStyle;
-}>({
+const styles = StyleSheet.create({
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 60,
   },
-  errorText: {
-    color: "#EF4444",
-    fontSize: 14,
-    marginTop: 12,
-  },
-  emptyText: {
-    color: "#9CA3AF",
-    fontSize: 16,
-    marginTop: 12,
-    fontWeight: "500",
-  },
+  errorText: { color: "#F87171", fontSize: 14 },
+  emptyText: { color: "#6B7280", fontSize: 16, marginTop: 8 },
   container: {
     flexDirection: "row",
     flexWrap: "wrap",
-    paddingHorizontal: 20,
-    gap: 16,
+    gap: 15,
+    paddingHorizontal: 15,
   },
   card: {
     width: Platform.select({
-      web: "calc(33.333% - 12px)", // 3 columns on web
-      default: "100%", // 1 column on mobile
+      web: "calc(33.3% - 10px)",
+      default: "100%",
     }) as any,
-    backgroundColor: "#FFF",
-    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
     overflow: "hidden",
     ...shadows.card,
-    marginBottom: 16,
   },
   cardImage: {
     width: "100%",
-    height: Platform.select({
-      web: 160,
-      default: 200, // Higher image on mobile
-    }) as number,
-    backgroundColor: "#F3F4F6",
+    height: Platform.select({ web: 160, default: 200 }) as number,
+    backgroundColor: "#eee",
   },
-  cardContent: {
-    padding: 12,
-  },
+  cardContent: { padding: 12 },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+  },
+  restaurantName: {
+    fontSize: 15,
+    fontWeight: "600",
+    flex: 1,
   },
   ratingBadge: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF3C7",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    backgroundColor: "#FFF7CC",
     borderRadius: 6,
+    alignItems: "center",
   },
   ratingText: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#92400E",
     marginLeft: 4,
-  },
-  restaurantName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1F2937",
-    flex: 1,
-  },
-  restaurantDesc: {
-    fontSize: 12,
-    color: "#6B7280",
-    lineHeight: 16,
-    marginBottom: 12,
-    minHeight: 32,
+    color: "#B45309",
   },
   restaurantCategory: {
     fontSize: 12,
-    color: "#9CA3AF",
-    marginBottom: 8,
+    color: "#6B7280",
+    marginVertical: 4,
   },
   footer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 6,
   },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ratingValue: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginLeft: 4,
-  },
-  freeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#D1FAE5",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  freeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#10B981",
-    marginLeft: 4,
-  },
-  timeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  timeText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginLeft: 4,
-    fontWeight: "500",
-  },
+  timeText: { fontSize: 12, color: "#6B7280" },
 });

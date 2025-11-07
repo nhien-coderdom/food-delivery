@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Modal, Pressable, TextInput, FlatList, ActivityIndicator, Alert, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useAddress } from "@/app/context/AddressContext";
+import { useAddress } from "@/components/AddressContext";
 import { shadows } from "@/lib/shadowStyles";
 import * as Location from "expo-location";
 

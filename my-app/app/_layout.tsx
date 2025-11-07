@@ -3,8 +3,8 @@ import { Slot, useRouter, useSegments } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
 import SyncClerkUser from "../components/SyncClerkUser";
-import { CartProvider } from "./context/CartContext";
-import { AddressProvider } from "./context/AddressContext";
+import { CartProvider } from "../components/CartContext";
+import { AddressProvider } from "../components/AddressContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Suppress development warnings

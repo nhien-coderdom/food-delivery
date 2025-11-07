@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, FlatList, Image, Pressable, useWindowDimensions, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import React from "react";
-import { useCart } from "@/app/context/CartContext";
+import { useCart } from "@/components/CartContext";
 import { Ionicons } from "@expo/vector-icons";
 import { shadows } from "@/lib/shadowStyles";
 import { useRouter } from "expo-router";

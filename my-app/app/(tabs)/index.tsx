@@ -11,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import RestaurantList from "../../components/RestaurantList";
 import DeliverTo from "@/components/DeliverTo";
-import { useCart } from "@/app/context/CartContext";
+import { useCart } from "../../components/CartContext";
 import { Link, Href } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { shadows } from "@/lib/shadowStyles";
@@ -32,7 +32,6 @@ export default function HomePage() {
         const res = await fetch(`${API_URL}/api/categories`);
         const json = await res.json();
 
-        console.log("📦 Categories from Strapi:", json);
 
         const formatted = json.data.map((c: any) => ({
           id: c.documentId,
