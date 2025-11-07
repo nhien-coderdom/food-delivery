@@ -54,7 +54,13 @@ export default function TabsLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+  name="payment-test"
+  options={{ title: "Test Pay" }}
+/>
+
       </Tabs>
+      
     </View>
   );
 }
