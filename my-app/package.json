@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build": "expo export:web",
+    "serve": "npx serve web-build",
     "lint": "expo lint"
   },
   "dependencies": {
