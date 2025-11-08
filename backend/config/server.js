@@ -3,7 +3,7 @@ module.exports = ({ env }) => ({
   port: env.int('PORT', 1337),
 
   // ✅ Dùng đúng biến HTTPS
-  url: env('APP_URL', 'https://foodie-0jpf.onrender.com'),
+  url: env('PUBLIC_URL', 'http://192.168.2.38:1337'),
 
   app: {
     keys: env.array('APP_KEYS'),
