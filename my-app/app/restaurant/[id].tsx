@@ -76,6 +76,7 @@ export default function RestaurantDetail() {
         <Image
           source={{ uri: getImageUrl(restaurant.image?.url) }}
           style={styles.headerImage}
+          resizeMode="contain"
         />
 
         <Pressable onPress={() => router.back()} style={styles.backButton}>
@@ -89,17 +90,41 @@ export default function RestaurantDetail() {
         <View style={styles.infoRow}>
           <View style={styles.iconBadge}>
             <Ionicons name="star" size={14} color="#FFB800" />
-            <Text style={styles.infoText}>4.7</Text>
+            <Text style={styles.infoText}>{restaurant.rating || "N/A"}</Text>
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="bicycle" size={14} color="#10B981" />
-            <Text style={styles.infoText}>Free</Text>
+            <Text style={styles.infoText}>
+              {restaurant.deliveryFee === 0 ? "Free" : formatVND(restaurant.deliveryFee)}
+            </Text>
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="time-outline" size={14} color="#6B7280" />
-            <Text style={styles.infoText}>20 min</Text>
+            <Text style={styles.infoText}>{restaurant.deliveryTime || 30} min</Text>
           </View>
         </View>
+
+        {/* Address & Phone */}
+        {restaurant.address && (
+          <View style={styles.detailRow}>
+            <Ionicons name="location" size={16} color="#6B7280" />
+            <Text style={styles.detailText}>{restaurant.address}</Text>
+          </View>
+        )}
+        {restaurant.phone && (
+          <View style={styles.detailRow}>
+            <Ionicons name="call" size={16} color="#6B7280" />
+            <Text style={styles.detailText}>{restaurant.phone}</Text>
+          </View>
+        )}
+        {(restaurant.openingHours || restaurant.closingHours) && (
+          <View style={styles.detailRow}>
+            <Ionicons name="time" size={16} color="#6B7280" />
+            <Text style={styles.detailText}>
+              {restaurant.openingHours || "09:00"} - {restaurant.closingHours || "22:00"}
+            </Text>
+          </View>
+        )}
 
         <Text style={styles.description}>{restaurant.description}</Text>
 
@@ -139,7 +164,13 @@ export default function RestaurantDetail() {
 
             return (
               <View key={dish.id} style={styles.card}>
-                <Image source={{ uri: imgUrl }} style={styles.dishImage} />
+                <View style={styles.dishImageWrapper}>
+                  <Image
+                    source={{ uri: imgUrl }}
+                    style={styles.dishImage}
+                    resizeMode="contain"
+                  />
+                </View>
                 <View style={styles.cardContent}>
                   <Text style={styles.dishName}>{dish.name}</Text>
                   <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
@@ -191,7 +222,14 @@ const cardWidth = Platform.select({
 });
 
 const styles = StyleSheet.create({
-  headerWrapper: { width: "100%", height: 220, position: "relative" },
+  headerWrapper: {
+    width: "100%",
+    height: 220,
+    position: "relative",
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   headerImage: { width: "100%", height: "100%" },
   backButton: {
     position: "absolute",
@@ -207,6 +245,17 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: "row", gap: 12, marginTop: 6 },
   iconBadge: { flexDirection: "row", gap: 4, alignItems: "center" },
   infoText: { fontSize: 13, color: "#4B5563", fontWeight: "500" },
+  detailRow: { 
+    flexDirection: "row", 
+    gap: 6, 
+    alignItems: "center", 
+    marginTop: 8 
+  },
+  detailText: { 
+    fontSize: 13, 
+    color: "#6B7280", 
+    flex: 1 
+  },
   description: {
     fontSize: 14,
     color: "#6b7280",
@@ -237,7 +286,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     ...shadows.card,
   },
-  dishImage: { width: "100%", height: 160 },
+  dishImageWrapper: {
+    height: 160,
+    padding: 12,
+    backgroundColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dishImage: { width: "100%", height: "100%" },
   cardContent: { padding: 10 },
   dishName: { fontSize: 16, fontWeight: "600" },
   dishPrice: { fontSize: 14, color: "#16a34a", marginVertical: 6 },
