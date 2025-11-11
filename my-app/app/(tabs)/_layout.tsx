@@ -54,12 +54,16 @@ export default function TabsLayout() {
             ),
           }}
         />
-        <Tabs.Screen
-  name="payment-test"
-  options={{ title: "Test Pay" }}
-/>
-
-      </Tabs>
+      <Tabs.Screen
+          name="map-test"
+          options={{
+            title: "Map Test",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="map" size={size} color={color} />
+            ),
+          }}
+        />
+      </Tabs> 
       
     </View>
   );
