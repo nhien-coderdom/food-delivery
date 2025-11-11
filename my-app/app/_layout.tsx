@@ -2,68 +2,65 @@ import { ClerkProvider, useUser } from "@clerk/clerk-expo";
 import { Slot, useRouter, useSegments } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { AuthProvider } from "../app/context/AuthContext";
 import SyncClerkUser from "../components/SyncClerkUser";
 import { CartProvider } from "../components/CartContext";
 import { AddressProvider } from "../components/AddressContext";
-import { SafeAreaProvider } from "react-native-safe-area-context";
 
-// Suppress development warnings
+// 🧩 Tắt một số warning không quan trọng khi dev
 if (__DEV__) {
   const originalWarn = console.warn;
   const originalLog = console.log;
-  
+
   console.warn = (...args) => {
-    const message = typeof args[0] === 'string' ? args[0] : '';
-    
-    // Ignore specific warnings that don't affect functionality
+    const message = typeof args[0] === "string" ? args[0] : "";
     if (
-      message.includes('Clerk: Clerk has been loaded with development keys') ||
-      message.includes('props.pointerEvents is deprecated') ||
-      message.includes('Cannot record touch end without a touch start')
+      message.includes("Clerk: Clerk has been loaded with development keys") ||
+      message.includes("props.pointerEvents is deprecated") ||
+      message.includes("Cannot record touch end without a touch start")
     ) {
       return;
     }
     originalWarn(...args);
   };
-  
+
   console.log = (...args) => {
-    const message = typeof args[0] === 'string' ? args[0] : '';
-    
-    // Ignore slow network font loading (dev only)
-    if (message.includes('[Intervention] Slow network is detected')) {
-      return;
-    }
+    const message = typeof args[0] === "string" ? args[0] : "";
+    if (message.includes("[Intervention] Slow network is detected")) return;
     originalLog(...args);
   };
 }
 
+// 🔑 Lưu session token Clerk trong SecureStore
 const tokenCache = {
   getToken: (key: string) => SecureStore.getItemAsync(key),
-  saveToken: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+  saveToken: (key: string, value: string) =>
+    SecureStore.setItemAsync(key, value),
 };
 
+// 🧭 Component bảo vệ route — chuyển hướng login/home
 function AuthGate() {
   const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
-    if (!isLoaded) return; // Clerk chưa load xong thì chờ
-
-    const inAuthGroup = segments[0] === "auth"; // ví dụ: /auth/login hoặc /auth/register
+    if (!isLoaded) return; // chờ Clerk load xong
+    const inAuthGroup = segments[0] === "auth";
 
     if (isSignedIn && inAuthGroup) {
-      // 🔹 Nếu user đã đăng nhập mà đang ở auth page => chuyển về home
       router.replace("/(tabs)");
     } else if (!isSignedIn && !inAuthGroup) {
-      // 🔹 Nếu user chưa đăng nhập mà không ở auth => chuyển về login (bảo vệ tất cả route)
       router.replace("/auth/login");
     }
-  }, [isLoaded, isSignedIn, segments]);
+  }, [isLoaded, isSignedIn]);
 
-  return <Slot />; // render các route con
+  return <Slot />;
 }
 
+// ✅ Root Layout hoàn chỉnh
 export default function RootLayout() {
   return (
     <ClerkProvider
@@ -71,12 +68,18 @@ export default function RootLayout() {
       tokenCache={tokenCache}
     >
       <SafeAreaProvider>
-        <AddressProvider>
-          <CartProvider>
-            <SyncClerkUser />
-            <AuthGate />
-          </CartProvider>
-        </AddressProvider>
+        {/* 🔒 AuthProvider phải bọc quanh SyncClerkUser */}
+        <AuthProvider>
+          <AddressProvider>
+            <CartProvider>
+              {/* 🔄 Đồng bộ Clerk → Strapi → AuthContext */}
+              <SyncClerkUser />
+
+              {/* 🧭 Xử lý chuyển hướng login/home */}
+              <AuthGate />
+            </CartProvider>
+          </AddressProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </ClerkProvider>
   );

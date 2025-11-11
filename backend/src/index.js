@@ -1,20 +1,19 @@
 'use strict';
+const { Server } = require('socket.io');
+const droneSim = require('../drone-sim');
 
 module.exports = {
-  /**
-   * An asynchronous register function that runs before
-   * your application is initialized.
-   *
-   * This gives you an opportunity to extend code.
-   */
-  register(/*{ strapi }*/) {},
+  register() {},
+  async bootstrap({ strapi }) {
+    const httpServer = strapi.server.httpServer;
+    const io = new Server(httpServer, {
+      cors: { origin: '*' },
+      path: '/socket.io/',
+    });
 
-  /**
-   * An asynchronous bootstrap function that runs before
-   * your application gets started.
-   *
-   * This gives you an opportunity to set up your data model,
-   * run jobs, or perform some special logic.
-   */
-  bootstrap(/*{ strapi }*/) {},
+    strapi.io = io;
+    droneSim.init(io);
+
+    console.log('✅ Socket.IO đã khởi tạo. Chờ client yêu cầu "drone:start".');
+  },
 };

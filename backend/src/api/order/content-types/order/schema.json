@@ -38,13 +38,6 @@
         "delivered"
       ]
     },
-    "paymentMethod": {
-      "type": "enumeration",
-      "enum": [
-        "VNPay",
-        "Cash"
-      ]
-    },
     "paymentStatus": {
       "type": "enumeration",
       "enum": [
@@ -52,9 +45,6 @@
         "unpaid",
         "refunded"
       ]
-    },
-    "deliveryAddress": {
-      "type": "text"
     },
     "phoneNumber": {
       "type": "string"
@@ -67,6 +57,12 @@
       "relation": "oneToOne",
       "target": "api::order-item.order-item",
       "mappedBy": "order"
+    },
+    "drone_location": {
+      "type": "json"
+    },
+    "route": {
+      "type": "json"
     }
   }
 }
