@@ -46,7 +46,7 @@ export default function SignInScreen() {
         // ⚡ user chưa có ngay lập tức -> đợi hook useUser load
         setTimeout(async () => {
           if (user) await syncWithStrapi(user);
-          router.replace('/(tabs)');
+          router.replace('../(tabs)/index');
         }, 1000);
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2));

@@ -41,6 +41,15 @@
       "relation": "manyToOne",
       "target": "api::category.category",
       "inversedBy": "dishes"
+    },
+    "cart_items": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::cart-item.cart-item",
+      "mappedBy": "dishes"
+    },
+    "stock": {
+      "type": "integer"
     }
   }
 }

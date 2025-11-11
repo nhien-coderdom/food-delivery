@@ -1,131 +1,282 @@
-import { createContext, useContext, useMemo, useState, ReactNode, useEffect, useRef } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  ReactNode,
+  useEffect,
+  useRef,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL } from "@/lib/apiConfig";
+import { useAuth } from "../app/context/AuthContext";
 
 export interface CartItem {
-  id: string; // unique cart line id
-  dishId: number; // id of the dish
+  id: string; // unique line id
+  dishId: number;
   name: string;
-  price: number; // unit price
+  price: number;
   quantity: number;
   restaurantId: number;
   restaurantName: string;
   image?: string;
 }
 
-interface CartContextType {
+export interface CartContextType {
+  currentRestaurant: number | null;
+  currentRestaurantName: string | null;
+  selectRestaurant: (id: number, name: string) => void;
+
   items: CartItem[];
   itemCount: number;
   totalPrice: number;
-  groups: Array<{ restaurantId: number; restaurantName: string; items: CartItem[]; itemCount: number; subtotal: number }>;
+
   addItem: (item: Omit<CartItem, "quantity" | "id">) => void;
-  removeItem: (restaurantId: number, dishId: number) => void;
-  updateQuantity: (restaurantId: number, dishId: number, quantity: number) => void;
+  removeItem: (dishId: number) => void;
+  updateQuantity: (dishId: number, quantity: number) => void;
+
   clearCart: () => void;
-  clearRestaurant: (restaurantId: number) => void;
-  getItemQuantity: (restaurantId: number, dishId: number) => number;
+  getItemQuantity: (dishId: number) => number;
+
+  currentCart?: CartItem[];
+  allCarts?: Record<number, CartItem[]>;
+  clearAllCarts?: () => void;
+
+  syncWithServer: () => Promise<void>;
+  fetchRemoteCarts: () => Promise<void>;
 }
 
+const STORAGE_KEY = "@foodapp/carts-by-restaurant";
 const CartContext = createContext<CartContextType | undefined>(undefined);
-const STORAGE_KEY = "@foodapp/cart-items";
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const { user, jwt } = useAuth();
+
+  const [carts, setCarts] = useState<Record<number, CartItem[]>>({});
+  const [currentRestaurant, setCurrentRestaurant] = useState<number | null>(
+    null
+  );
+  const [currentRestaurantName, setCurrentRestaurantName] = useState<
+    string | null
+  >(null);
+
   const hydrated = useRef(false);
 
-  // Restore persisted cart once on mount
+  // 🔁 Load từ AsyncStorage khi mở app
   useEffect(() => {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) setItems(parsed);
+          if (parsed && typeof parsed === "object") {
+            setCarts(parsed);
+          }
         }
       } catch (err) {
-        console.warn("Failed to load cart from storage", err);
+        console.warn("⚠️ Failed to load carts:", err);
       } finally {
         hydrated.current = true;
       }
     })();
   }, []);
 
-  // Persist cart whenever it changes after hydration
+  // 💾 Lưu cart xuống storage khi thay đổi
   useEffect(() => {
     if (!hydrated.current) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items)).catch((err) => {
-      console.warn("Failed to persist cart", err);
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(carts)).catch((err) => {
+      console.warn("⚠️ Failed to persist carts:", err);
     });
-  }, [items]);
+  }, [carts]);
 
-  const itemCount = useMemo(() => items.reduce((sum, it) => sum + it.quantity, 0), [items]);
-  const totalPrice = useMemo(() => items.reduce((sum, it) => sum + it.price * it.quantity, 0), [items]);
-  const groups = useMemo(() => {
-    const map = new Map<number, { restaurantId: number; restaurantName: string; items: CartItem[] }>();
-    for (const it of items) {
-      const g = map.get(it.restaurantId) || { restaurantId: it.restaurantId, restaurantName: it.restaurantName, items: [] };
-      g.items.push(it);
-      map.set(it.restaurantId, g);
-    }
-    return Array.from(map.values()).map((g) => ({
-      ...g,
-      itemCount: g.items.reduce((s, i) => s + i.quantity, 0),
-      subtotal: g.items.reduce((s, i) => s + i.quantity * i.price, 0),
-    }));
-  }, [items]);
+  // 🧭 Chọn nhà hàng hiện tại
+  const selectRestaurant = (id: number, name: string) => {
+    setCurrentRestaurant(id);
+    setCurrentRestaurantName(name);
+  };
 
+  // 🧮 Lấy giỏ hàng hiện tại
+  const currentCart: CartItem[] = useMemo(() => {
+    if (!currentRestaurant) return [];
+    const cart = carts[currentRestaurant];
+    return Array.isArray(cart) ? cart : [];
+  }, [currentRestaurant, carts]);
+
+  // 🧾 Tổng số lượng và tổng tiền
+  const itemCount = useMemo(
+    () => currentCart.reduce((s, i) => s + i.quantity, 0),
+    [currentCart]
+  );
+  const totalPrice = useMemo(
+    () => currentCart.reduce((s, i) => s + i.price * i.quantity, 0),
+    [currentCart]
+  );
+
+  // ➕ Thêm món
   const addItem: CartContextType["addItem"] = (newItem) => {
-    setItems((prev) => {
-      const exists = prev.find((it) => it.dishId === newItem.dishId && it.restaurantId === newItem.restaurantId);
-      if (exists) {
-        return prev.map((it) =>
-          it.dishId === newItem.dishId && it.restaurantId === newItem.restaurantId
-            ? { ...it, quantity: it.quantity + 1 }
-            : it
-        );
-      }
-      const line: CartItem = { id: `${newItem.restaurantId}-${newItem.dishId}-${Date.now()}`, quantity: 1, ...newItem };
-      return [...prev, line];
+    const restaurantId = newItem.restaurantId;
+    if (!restaurantId) return;
+
+    if (!currentRestaurant || currentRestaurant !== restaurantId) {
+      setCurrentRestaurant(restaurantId);
+      setCurrentRestaurantName(newItem.restaurantName);
+    }
+
+    setCarts((prev) => {
+      const existingCart = prev[restaurantId] || [];
+      const exists = existingCart.find((it) => it.dishId === newItem.dishId);
+
+      const updated = exists
+        ? existingCart.map((it) =>
+            it.dishId === newItem.dishId
+              ? { ...it, quantity: it.quantity + 1 }
+              : it
+          )
+        : [
+            ...existingCart,
+            {
+              id: `${restaurantId}-${newItem.dishId}-${Date.now()}`,
+              quantity: 1,
+              ...newItem,
+            },
+          ];
+
+      return { ...prev, [restaurantId]: updated };
     });
   };
 
-  const removeItem: CartContextType["removeItem"] = (restaurantId, dishId) => {
-    setItems((prev) => prev.filter((it) => !(it.restaurantId === restaurantId && it.dishId === dishId)));
+  // ❌ Xóa món
+  const removeItem: CartContextType["removeItem"] = (dishId) => {
+    if (!currentRestaurant) return;
+    setCarts((prev) => {
+      const current = prev[currentRestaurant] || [];
+      const updated = current.filter((it) => it.dishId !== dishId);
+      return { ...prev, [currentRestaurant]: updated };
+    });
   };
 
-  const updateQuantity: CartContextType["updateQuantity"] = (restaurantId, dishId, quantity) => {
-    setItems((prev) =>
-      quantity <= 0
-        ? prev.filter((it) => !(it.restaurantId === restaurantId && it.dishId === dishId))
-        : prev.map((it) => (it.restaurantId === restaurantId && it.dishId === dishId ? { ...it, quantity } : it))
-    );
+  // 🔁 Cập nhật số lượng
+  const updateQuantity: CartContextType["updateQuantity"] = (
+    dishId,
+    quantity
+  ) => {
+    if (!currentRestaurant) return;
+    setCarts((prev) => {
+      const current = prev[currentRestaurant] || [];
+      const updated =
+        quantity <= 0
+          ? current.filter((it) => it.dishId !== dishId)
+          : current.map((it) =>
+              it.dishId === dishId ? { ...it, quantity } : it
+            );
+      return { ...prev, [currentRestaurant]: updated };
+    });
   };
 
-  const clearCart = () => setItems([]);
-  const clearRestaurant: CartContextType["clearRestaurant"] = (restaurantId) => {
-    setItems((prev) => prev.filter((it) => it.restaurantId !== restaurantId));
+  // 🧹 Xóa giỏ hiện tại
+  const clearCurrentCart = () => {
+    if (!currentRestaurant) return;
+    setCarts((prev) => {
+      const copy = { ...prev };
+      delete copy[currentRestaurant];
+      return copy;
+    });
   };
 
-  const getItemQuantity = (restaurantId: number, dishId: number) =>
-    items.find((it) => it.restaurantId === restaurantId && it.dishId === dishId)?.quantity ?? 0;
+  // 🚮 Xóa tất cả giỏ
+  const clearAllCarts = () => setCarts({});
+
+  // 🔍 Lấy số lượng 1 món trong currentCart
+  const getItemQuantity: CartContextType["getItemQuantity"] = (dishId) =>
+    currentCart.find((it) => it.dishId === dishId)?.quantity ?? 0;
+
+  // ☁️ Đồng bộ lên Strapi
+  const syncWithServer = async () => {
+    if (!jwt || !user) {
+      console.warn("⚠️ No JWT or user, skip sync");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/cart/sync`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ carts }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn("❌ Sync failed:", text);
+      } else {
+        console.log("✅ Cart synced successfully");
+      }
+    } catch (err) {
+      console.warn("⚠️ Sync error:", err);
+    }
+  };
+
+  // ☁️ Lấy giỏ từ Strapi khi user login
+  const fetchRemoteCarts = async () => {
+    if (!jwt || !user) return;
+    try {
+      const res = await fetch(`${API_URL}/cart/me`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const normalized: Record<number, CartItem[]> = {};
+        for (const c of data) {
+          const restId = c.restaurant?.id || c.restaurant;
+          normalized[restId] = c.items || [];
+        }
+        setCarts(normalized);
+        console.log("✅ Loaded carts from Strapi");
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to fetch remote carts:", err);
+    }
+  };
+
+  // 🔁 Tự động tải carts từ Strapi khi user login
+  useEffect(() => {
+    if (user && jwt) {
+      fetchRemoteCarts();
+    }
+  }, [user, jwt]);
+
+  const clearCart = clearCurrentCart;
+  const items = currentCart;
 
   const value: CartContextType = {
+    currentRestaurant,
+    currentRestaurantName,
+    selectRestaurant,
     items,
     itemCount,
     totalPrice,
-    groups,
     addItem,
     removeItem,
     updateQuantity,
     clearCart,
-    clearRestaurant,
     getItemQuantity,
+    currentCart,
+    allCarts: carts,
+    clearAllCarts,
+    syncWithServer,
+    fetchRemoteCarts,
   };
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return (
+    <CartContext.Provider value={value}>{children}</CartContext.Provider>
+  );
 }
 
 export function useCart() {
   const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used within a CartProvider");
+  if (!ctx)
+    throw new Error("useCart must be used within a CartProvider");
   return ctx;
 }

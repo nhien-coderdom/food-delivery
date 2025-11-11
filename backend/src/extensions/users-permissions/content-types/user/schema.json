@@ -71,6 +71,18 @@
       "relation": "oneToMany",
       "target": "api::order.order",
       "mappedBy": "users_permissions_user"
+    },
+    "carts": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::cart.cart",
+      "mappedBy": "users_permissions_user"
+    },
+    "address": {
+      "type": "text"
+    },
+    "location": {
+      "type": "json"
     }
   }
 }
