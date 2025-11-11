@@ -9,15 +9,14 @@ import {
   Pressable,
   Platform,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
 import { useCart } from "@/components/CartContext";
 import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-// Money format
+// Format tiền tệ
 const formatVND = (num: number) =>
   num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
 
@@ -33,16 +32,26 @@ export default function RestaurantDetail() {
   const [selectedCat, setSelectedCat] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  const { addItem, getItemQuantity, updateQuantity } = useCart();
+  // ✅ Context mới — không cần getItemQuantity
+  const { addItem, updateQuantity, selectRestaurant, currentCart } = useCart();
 
   useEffect(() => {
     async function fetchRestaurant() {
-      const data = await fetch(
-        `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[dishes][populate][image]=true&populate[dishes][populate][category]=true&populate[categories]=true`
-      );
-      const json = await data.json();
-      setRestaurant(json.data?.[0]);
-      setLoading(false);
+      try {
+        const data = await fetch(
+          `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[dishes][populate][image]=true&populate[dishes][populate][category]=true&populate[categories]=true`
+        );
+        const json = await data.json();
+        const res = json.data?.[0];
+        setRestaurant(res);
+        if (res) {
+          selectRestaurant(res.id, res.name); // ✅ Chọn đúng giỏ cho nhà hàng này
+        }
+      } catch (err) {
+        console.warn("Lỗi tải dữ liệu nhà hàng:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     fetchRestaurant();
   }, [id]);
@@ -50,20 +59,20 @@ export default function RestaurantDetail() {
   if (loading)
     return <ActivityIndicator style={{ marginTop: 80 }} size="large" color="#FF6B35" />;
 
-  if (!restaurant) return <Text>Restaurant not found.</Text>;
+  if (!restaurant) return <Text>Không tìm thấy nhà hàng.</Text>;
 
   const dishes = restaurant.dishes || [];
-  // ✅ Get category from API restaurant.categories
 
+  // ✅ Lấy danh mục từ API
   const categories: CategoryChip[] = [
-    { id: "all", name: "All" },
+    { id: "all", name: "Tất cả" },
     ...(restaurant.categories?.map((c: any) => ({
       id: c.id.toString(),
       name: c.name,
-    })) || [])
+    })) || []),
   ];
 
-  // ✅ Filter dish by category id
+  // ✅ Lọc món theo danh mục
   const filteredDishes =
     selectedCat === "all"
       ? dishes
@@ -71,7 +80,7 @@ export default function RestaurantDetail() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* HEADER IMAGE */}
+      {/* Header Image */}
       <View style={styles.headerWrapper}>
         <Image
           source={{ uri: getImageUrl(restaurant.image?.url) }}
@@ -93,17 +102,17 @@ export default function RestaurantDetail() {
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="bicycle" size={14} color="#10B981" />
-            <Text style={styles.infoText}>Free</Text>
+            <Text style={styles.infoText}>Miễn phí</Text>
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="time-outline" size={14} color="#6B7280" />
-            <Text style={styles.infoText}>20 min</Text>
+            <Text style={styles.infoText}>20 phút</Text>
           </View>
         </View>
 
         <Text style={styles.description}>{restaurant.description}</Text>
 
-        {/* ✅ Category Chips from API */}
+        {/* Category Chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -114,15 +123,12 @@ export default function RestaurantDetail() {
             <Pressable
               key={cat.id}
               onPress={() => setSelectedCat(cat.id)}
-              style={[
-                styles.chip,
-                selectedCat === cat.id && styles.chipActive
-              ]}
+              style={[styles.chip, selectedCat === cat.id && styles.chipActive]}
             >
               <Text
                 style={[
                   styles.chipText,
-                  selectedCat === cat.id && styles.chipTextActive
+                  selectedCat === cat.id && styles.chipTextActive,
                 ]}
               >
                 {cat.name}
@@ -135,7 +141,9 @@ export default function RestaurantDetail() {
         <View style={styles.grid}>
           {filteredDishes.map((dish: any) => {
             const imgUrl = getImageUrl(dish.image?.url);
-            const qty = getItemQuantity(restaurant.id, dish.id);
+            const qty =
+              (currentCart ?? []).find((it) => it.dishId === dish.id)?.quantity ?? 0;
+
 
             return (
               <View key={dish.id} style={styles.card}>
@@ -162,11 +170,17 @@ export default function RestaurantDetail() {
                     </Pressable>
                   ) : (
                     <View style={styles.qtyRow}>
-                      <Pressable style={styles.qtyBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty - 1)}>
+                      <Pressable
+                        style={styles.qtyBtn}
+                        onPress={() => updateQuantity(dish.id, qty - 1)}
+                      >
                         <Text style={styles.qtyText}>−</Text>
                       </Pressable>
                       <Text style={styles.qtyNumber}>{qty}</Text>
-                      <Pressable style={styles.qtyBtn} onPress={() => updateQuantity(restaurant.id, dish.id, qty + 1)}>
+                      <Pressable
+                        style={styles.qtyBtn}
+                        onPress={() => updateQuantity(dish.id, qty + 1)}
+                      >
                         <Text style={styles.qtyText}>+</Text>
                       </Pressable>
                     </View>
@@ -260,5 +274,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   qtyText: { fontSize: 18, fontWeight: "700", color: "#FF6B35" },
-  qtyNumber: { minWidth: 24, textAlign: "center", fontSize: 15, fontWeight: "700" },
+  qtyNumber: {
+    minWidth: 24,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "700",
+  },
 });
