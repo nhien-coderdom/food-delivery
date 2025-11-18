@@ -1175,6 +1175,10 @@ export interface PluginUsersPermissionsUser
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
+    restaurant: Schema.Attribute.Relation<
+      'oneToOne',
+      'api::restaurant.restaurant'
+    >;
     role: Schema.Attribute.Relation<
       'manyToOne',
       'plugin::users-permissions.role'
