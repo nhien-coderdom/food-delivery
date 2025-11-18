@@ -71,7 +71,7 @@ export default function SignInScreen() {
         setTimeout(async () => {
           if (clerkUser) {
             await syncWithStrapi(clerkUser);
-            router.replace("../(tabs)/index"); // ✅ điều hướng sau sync
+            router.replace("../tabs /index"); // ✅ điều hướng sau sync
           } else {
             console.warn("⚠️ Clerk user chưa load kịp");
             Alert.alert("Lỗi", "Không thể lấy thông tin người dùng.");

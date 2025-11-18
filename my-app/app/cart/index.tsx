@@ -5,295 +5,309 @@ import {
   FlatList,
   Image,
   Pressable,
-  useWindowDimensions,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React from "react";
-import { useCart } from "@/components/CartContext";
+import React, { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { shadows } from "@/lib/shadowStyles";
 import { useRouter } from "expo-router";
+import { useCart } from "@/app/context/CartContext";
+import { useAddress } from "@/app/context/AddressContext";
+import DeliverTo from "@/components/DeliverTo";
+import * as WebBrowser from "expo-web-browser";
+import { API_URL } from "@/lib/apiConfig";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function CartScreen() {
-  const {
-    currentCart,
-    totalPrice,
-    updateQuantity,
-    removeItem,
-    clearCart,
-    currentRestaurantName,
-  } = useCart();
-
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isWide = width >= 900;
+  const { currentCart, totalPrice, updateQuantity, removeItem, updateNote, clearCart, currentRestaurant, currentRestaurantName } = useCart();
+  const { currentAddress, currentLocation } = useAddress();
+  const { user } = useAuth();
+
+  const [receiver, setReceiver] = useState(user?.username || "");
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const formatVND = (n: number) =>
     n.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
 
-  // ✅ Chuyển sang màn thanh toán
-  const checkout = () => {
-    if (!currentCart || currentCart.length === 0) return;
-    router.push("/checkout/payment");
+  // ===================== CHECKOUT HANDLER =====================
+  const checkout = async () => {
+    if (!receiver.trim()) return Alert.alert("Lỗi", "Vui lòng nhập tên người nhận");
+    const phoneRegex = /^[0-9]{9,11}$/;
+    if (!phone.trim() || !phoneRegex.test(phone)) {
+      return Alert.alert("Lỗi", "Số điện thoại phải từ 9 - 11 chữ số!");
+    }
+    if (!currentAddress?.trim()) return Alert.alert("Lỗi", "Bạn cần chọn địa chỉ giao hàng!");
+
+    const lat = currentLocation?.latitude ?? "";
+    const lng = currentLocation?.longitude ?? "";
+
+    try {
+      setLoading(true);
+
+      const payload = {
+        amount: totalPrice,
+        orderId: Date.now().toString(),
+        userId: user?.id,
+        customerName: receiver.trim(),
+        customerPhone: phone.trim(),
+        deliveryAddress: currentAddress,
+        restaurantId: currentRestaurant,
+        restaurantName: currentRestaurantName || "Nhà hàng",
+        coords: { lat, lng },
+        items: currentCart,
+      };
+
+      const res = await fetch(`${API_URL}/api/vnpay/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (!json.paymentUrl) return Alert.alert("Lỗi", "Không thể tạo giao dịch");
+
+      // ============ WEB MODE ============
+      if (Platform.OS === "web") {
+        window.location.href = json.paymentUrl;
+      }
+      // ============ MOBILE MODE ============
+      else {
+        const result = await WebBrowser.openAuthSessionAsync(
+          json.paymentUrl,
+          "myapp://checkout/success"
+        );
+
+        if (result.type === "success" && result.url.includes("vnp_ResponseCode=00")) {
+          clearCart();
+          router.replace(`/checkout/success?lat=${lat}&lng=${lng}`);
+        }
+      }
+    } catch (err) {
+      Alert.alert("Lỗi", "Không thể kết nối hệ thống thanh toán.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!currentCart) return null;
-
+  // ===================== UI =====================
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
+
         {/* Header */}
         <View style={styles.header}>
-          <Pressable
-            style={styles.backBtn}
-            onPress={() => router.replace("/(tabs)")}
-          >
-            <Ionicons name="arrow-back" size={22} color="#111827" />
+          <Pressable onPress={() => router.replace("/(tabs)")}>
+            <Ionicons name="arrow-back" size={24} color="#333" />
           </Pressable>
-          <Text style={styles.title}>Giỏ hàng</Text>
-          <View style={{ width: 22 }} />
+          <Text style={styles.h1}>Giỏ hàng</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        {/* Nếu giỏ trống */}
-        {currentCart.length === 0 ? (
+        {currentCart?.length === 0 ? (
           <Text style={styles.empty}>Giỏ hàng trống</Text>
         ) : (
-          <View style={[styles.main, isWide && styles.mainWide]}>
-            {/* Cột danh sách món */}
-            <View style={[styles.listColumn, isWide && styles.listColumnWide]}>
-              <Text style={styles.groupTitle}>
-                {currentRestaurantName || "Nhà hàng"}
-              </Text>
+          <>
+            {/* Cart Items */}
+            <FlatList
+              data={currentCart}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingBottom: 14 }}
+              renderItem={({ item }) => (
+                <View style={styles.cartCard}>
+                  <Image source={{ uri: item.image }} style={styles.cartImg} />
 
-              <FlatList
-                data={currentCart}
-                keyExtractor={(it) => it.id}
-                contentContainerStyle={{ paddingBottom: 16 }}
-                renderItem={({ item: it }) => (
-                  <View style={[styles.card, isWide && styles.cardWide]}>
-                    <Image
-                      source={{
-                        uri: it.image || "https://via.placeholder.com/80",
-                      }}
-                      style={[styles.image, isWide && styles.imageWide]}
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={2} style={styles.cartName}>{item.name}</Text>
+
+                    <Text style={styles.cartPrice}>{formatVND(item.price)}</Text>
+
+                    {/* Notes */}
+                    <TextInput
+                      placeholder="Thêm ghi chú (Không cay, ít đá...)"
+                      value={item.notes || ""}
+                      onChangeText={(txt) => updateNote(item.dishId, txt)}
+                      style={styles.noteInput}
+                      placeholderTextColor="#999"
                     />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[styles.name, isWide && styles.nameWide]}
-                        numberOfLines={2}
+
+                    {/* Quantity */}
+                    <View style={styles.qtyWrap}>
+                      <Pressable
+                        style={styles.qtyBtn}
+                        onPress={() => updateQuantity(item.dishId, Math.max(item.quantity - 1, 1))}
                       >
-                        {it.name}
-                      </Text>
-                      <Text
-                        style={[styles.price, isWide && styles.priceWide]}
+                        <Text style={styles.qtyBtnText}>−</Text>
+                      </Pressable>
+
+                      <Text style={styles.qtyNum}>{item.quantity}</Text>
+
+                      <Pressable
+                        style={styles.qtyBtn}
+                        onPress={() => updateQuantity(item.dishId, item.quantity + 1)}
                       >
-                        {formatVND(it.price)}
-                      </Text>
-                      <View style={styles.row}>
-                        <Pressable
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            updateQuantity(it.dishId, it.quantity - 1)
-                          }
-                        >
-                          <Text style={styles.stepText}>–</Text>
-                        </Pressable>
-                        <Text style={styles.qty}>{it.quantity}</Text>
-                        <Pressable
-                          style={styles.stepBtn}
-                          onPress={() =>
-                            updateQuantity(it.dishId, it.quantity + 1)
-                          }
-                        >
-                          <Text style={styles.stepText}>+</Text>
-                        </Pressable>
-                      </View>
+                        <Text style={styles.qtyBtnText}>+</Text>
+                      </Pressable>
                     </View>
-                    <Pressable
-                      style={{ padding: 8 }}
-                      onPress={() => removeItem(it.dishId)}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color="#EF4444"
-                      />
-                    </Pressable>
                   </View>
-                )}
-              />
 
-              <View style={styles.groupFooter}>
-                <Text style={styles.groupSubtotal}>
-                  Tạm tính: {formatVND(totalPrice)}
-                </Text>
-                <Pressable
-                  style={styles.checkoutBtnSm}
-                  onPress={checkout}
-                >
-                  <Text style={styles.checkoutText}>Thanh toán</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Cột tổng hợp (cho màn rộng) */}
-            {isWide && (
-              <View style={styles.summaryColumn}>
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryTitle}>Tổng cộng</Text>
-                  <Text style={styles.summaryTotal}>
-                    {formatVND(totalPrice)}
-                  </Text>
-                  <Pressable
-                    style={[styles.btn, styles.clear]}
-                    onPress={clearCart}
-                  >
-                    <Text style={styles.clearText}>Xóa giỏ hàng</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.btn,
-                      styles.checkout,
-                      { marginTop: 10 },
-                    ]}
-                    onPress={checkout}
-                  >
-                    <Text style={styles.checkoutText}>Thanh toán</Text>
+                  {/* Remove */}
+                  <Pressable onPress={() => removeItem(item.dishId)} style={styles.removeBtn}>
+                    <Ionicons name="trash" size={20} color="#ff4d4d" />
                   </Pressable>
                 </View>
-              </View>
-            )}
-          </View>
-        )}
+              )}
+            />
 
-        {/* Footer cho màn nhỏ */}
-        {!isWide && currentCart.length > 0 && (
-          <View style={styles.footer}>
-            <Text style={styles.total}>
-              Tổng: {formatVND(totalPrice)}
-            </Text>
-            <Pressable
-              style={[styles.btn, styles.clear]}
-              onPress={clearCart}
-            >
-              <Text style={styles.clearText}>Xóa giỏ</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btn, styles.checkout]}
-              onPress={checkout}
-            >
-              <Text style={styles.checkoutText}>Thanh toán</Text>
-            </Pressable>
-          </View>
+            {/* Delivery Info */}
+            <Text style={styles.label}>Thông tin giao hàng</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Tên người nhận"
+              value={receiver}
+              onChangeText={setReceiver}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Số điện thoại"
+              keyboardType="number-pad"
+              value={phone}
+              maxLength={11}
+              onChangeText={setPhone}
+            />
+
+            <View style={styles.addressBox}>
+              <Text style={styles.addressText}>
+                {currentAddress || "Chưa chọn địa chỉ"}
+              </Text>
+              <Pressable onPress={() => setShowDeliveryModal(true)}>
+                <Text style={styles.changeBtn}>Thay đổi</Text>
+              </Pressable>
+            </View>
+
+            {/* Total & Order */}
+            <View style={styles.footer}>
+              <Text style={styles.total}>Tổng: {formatVND(totalPrice)}</Text>
+
+              <Pressable style={styles.btn} onPress={checkout} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Thanh toán ngay</Text>
+                )}
+              </Pressable>
+            </View>
+          </>
         )}
       </View>
+
+      {/* Address Modal */}
+      <DeliverTo
+        visible={showDeliveryModal}
+        onClose={() => setShowDeliveryModal(false)}
+        showTriggerButton={false}
+      />
     </SafeAreaView>
   );
 }
 
+/* ===================== STYLES ===================== */
+
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
-  container: { flex: 1, padding: 16 },
+  safe: { flex: 1, backgroundColor: "#fff" },
+
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    width: Platform.OS === "web" ? "70%" : "100%",
+    maxWidth: Platform.OS === "web" ? 800 : "100%",
+    alignSelf: Platform.OS === "web" ? "center" : "flex-start",
+  },
+
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    marginVertical: 16,
   },
-  backBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: "#F3F4F6",
-  },
-  title: { fontSize: 26, fontWeight: "900", color: "#EA580C" },
-  empty: { textAlign: "center", color: "#6B7280", marginTop: 40 },
-  main: { width: "100%", alignSelf: "center", maxWidth: 1000 },
-  mainWide: { flexDirection: "row", gap: 20 },
-  listColumn: { flex: 1 },
-  listColumnWide: { flex: 2 },
-  summaryColumn: { flex: 1 },
-  summaryCard: {
-    backgroundColor: "#FFFFFF",
+
+  h1: { fontSize: 24, fontWeight: "900", color: "#FF6B35" },
+  empty: { textAlign: "center", marginTop: 50, fontSize: 16, color: "#777" },
+
+  cartCard: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    padding: 14,
     borderRadius: 14,
-    padding: 16,
-    ...shadows.button,
-    position: "sticky" as any,
-    top: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#eee",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+    gap: 14,
   },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  summaryTotal: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  groupTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#111827",
-    marginBottom: 12,
-  },
-  card: {
-    flexDirection: "row",
-    gap: 12,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  cardWide: { padding: 14 },
-  image: { width: 70, height: 70, borderRadius: 10 },
-  imageWide: { width: 84, height: 84 },
-  name: { fontSize: 15, fontWeight: "700", color: "#111827" },
-  nameWide: { fontSize: 16 },
-  price: { fontSize: 14, color: "#FF6B35", fontWeight: "700", marginTop: 4 },
-  priceWide: { fontSize: 15 },
-  row: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  stepBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#FFF1ED",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepText: { fontSize: 18, fontWeight: "900", color: "#FF6B35" },
-  qty: { minWidth: 24, textAlign: "center", fontSize: 16, fontWeight: "700" },
-  groupFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+
+  cartImg: { width: 80, height: 80, borderRadius: 12, backgroundColor: "#f3f3f3" },
+  cartName: { fontSize: 16, fontWeight: "700", color: "#222" },
+  cartPrice: { fontSize: 15, fontWeight: "600", color: "#FF6B35", marginTop: 3 },
+
+  noteInput: {
+    fontSize: 13,
     marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    backgroundColor: "#fafafa",
   },
-  groupSubtotal: { fontSize: 14, fontWeight: "800", color: "#111827" },
-  footer: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingTop: 12,
-    gap: 12,
+
+  qtyWrap: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 10 },
+  qtyBtn: { width: 34, height: 34, justifyContent: "center", alignItems: "center", borderRadius: 9, backgroundColor: "#FFF1ED" },
+  qtyBtnText: { fontSize: 20, fontWeight: "900", color: "#FF6B35" },
+  qtyNum: { fontSize: 16, fontWeight: "700", width: 26, textAlign: "center" },
+  removeBtn: { padding: 5 },
+
+  label: { fontSize: 15, fontWeight: "700", marginTop: 10, marginBottom: 6 },
+
+  input: {
+    borderWidth: 1,
+    borderColor: "#DDD",
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    marginBottom: 10,
+    width: "100%",
   },
-  total: { fontSize: 16, fontWeight: "800", color: "#111827" },
-  btn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
+
+  addressBox: {
+    borderWidth: 1,
+    borderColor: "#DDD",
+    backgroundColor: "#FAFAFA",
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
   },
-  clear: { backgroundColor: "#F3F4F6" },
-  clearText: { color: "#6B7280", fontWeight: "700", textAlign: "center" },
-  checkout: { backgroundColor: "#FF6B35" },
-  checkoutText: { color: "#fff", fontWeight: "800" },
-  checkoutBtnSm: {
-    backgroundColor: "#FF6B35",
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    alignSelf: "flex-end",
-  },
+
+  addressText: { flex: 1, fontSize: 14, color: "#222" },
+  changeBtn: { color: "#FF6B35", fontWeight: "700", marginLeft: 8 },
+
+  footer: { marginTop: 10 },
+  total: { fontSize: 18, fontWeight: "800", marginBottom: 12 },
+
+  btn: { backgroundColor: "#FF6B35", paddingVertical: 14, alignItems: "center", borderRadius: 12 },
+  btnText: { fontSize: 16, fontWeight: "800", color: "#fff" },
 });
