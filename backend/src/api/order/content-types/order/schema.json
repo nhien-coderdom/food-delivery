@@ -52,17 +52,11 @@
     "note": {
       "type": "string"
     },
-    "order_item": {
+    "order_items": {
       "type": "relation",
-      "relation": "oneToOne",
+      "relation": "oneToMany",
       "target": "api::order-item.order-item",
       "mappedBy": "order"
-    },
-    "drone_location": {
-      "type": "json"
-    },
-    "route": {
-      "type": "json"
     }
   }
 }

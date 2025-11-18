@@ -282,41 +282,19 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
     try {
       setApiError(null);
 
-      const baseUrl = `${API_URL}/api/restaurants`;
+      const url = new URL(`${API_URL}/api/restaurants`);
+      url.searchParams.append("fields[0]", "name");
+      url.searchParams.append("fields[1]", "address");
+      url.searchParams.append("fields[2]", "phone");
 
-      const buildRequest = (withManagerFilter: boolean) => {
-        const url = new URL(baseUrl);
-        url.searchParams.append("fields[0]", "name");
-        url.searchParams.append("fields[1]", "address");
-        url.searchParams.append("fields[2]", "phone");
-        if (withManagerFilter && managerId !== null) {
-          url.searchParams.append("filters[managers][id][$eq]", String(managerId));
-        }
-        return url;
-      };
-
-      const primaryResponse = await fetch(buildRequest(true).toString(), {
+      const response = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${resolvedToken}` },
       });
 
-      let data = await primaryResponse.json();
+      const data = await response.json();
 
-      if (!primaryResponse.ok) {
+      if (!response.ok) {
         throw new Error(data?.error?.message ?? "Không thể lấy thông tin nhà hàng.");
-      }
-
-      if ((!Array.isArray(data?.data) || data.data.length === 0) && managerId) {
-        const fallbackResponse = await fetch(buildRequest(false).toString(), {
-          headers: { Authorization: `Bearer ${resolvedToken}` },
-        });
-
-        const fallbackData = await fallbackResponse.json();
-
-        if (fallbackResponse.ok && Array.isArray(fallbackData?.data) && fallbackData.data.length > 0) {
-          data = fallbackData;
-        } else if (!fallbackResponse.ok) {
-          throw new Error(fallbackData?.error?.message ?? "Không thể lấy thông tin nhà hàng.");
-        }
       }
 
       const restaurant = Array.isArray(data?.data) ? data.data[0] : undefined;
