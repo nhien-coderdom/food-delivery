@@ -6,8 +6,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider } from "../app/context/AuthContext";
 import SyncClerkUser from "../components/SyncClerkUser";
-import { CartProvider } from "../components/CartContext";
-import { AddressProvider } from "../components/AddressContext";
+import { CartProvider } from "./context/CartContext";
+import { AddressProvider } from "./context/AddressContext";
 
 // 🧩 Tắt một số warning không quan trọng khi dev
 if (__DEV__) {

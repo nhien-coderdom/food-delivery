@@ -61,7 +61,7 @@ export default function SuccessScreen() {
       )}
 
       <Pressable
-        onPress={() => router.replace("/(tabs)")}
+        onPress={() => router.replace("./(tabs) ")}
         style={{
           backgroundColor: status === "success" ? "#FF6B35" : "#9CA3AF",
           paddingVertical: 12,

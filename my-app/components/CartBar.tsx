@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { useCart } from "@/components/CartContext";
+import { useCart } from "@/app/context/CartContext";
 import { shadows } from "@/lib/shadowStyles";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +25,7 @@ export default function CartBar() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Đi tới giỏ hàng"
-        onPress={() => router.push("/cart" as Href)}
+        onPress={() => router.push("../cart" as Href)}
         style={({ pressed, hovered }) => [
           styles.buttonBase,
           hovered ? styles.buttonHover : null,
