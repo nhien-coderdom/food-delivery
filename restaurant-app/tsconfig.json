@@ -1,8 +1,0 @@
-{
-  "extends": "expo/tsconfig.base",
-  "compilerOptions": {
-    "skipLibCheck": true,       // bỏ qua lỗi type của react-native-web
-    "strict": true,             // giữ strict type
-    "jsx": "react-jsx"
-  }
-}
