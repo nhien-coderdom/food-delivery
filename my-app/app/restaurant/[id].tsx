@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
-import { useCart } from "@/components/CartContext";
+import { useCart } from "@/app/context/CartContext";
 import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
 import { Ionicons } from "@expo/vector-icons";

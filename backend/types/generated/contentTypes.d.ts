@@ -633,10 +633,12 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       'manyToOne',
       'api::restaurant.restaurant'
     >;
+    route: Schema.Attribute.JSON;
     statusOrder: Schema.Attribute.Enumeration<
       ['pending', 'confirmed', 'canceled', 'delivered']
     >;
     totalPrice: Schema.Attribute.Decimal;
+    transaction_id: Schema.Attribute.BigInteger;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

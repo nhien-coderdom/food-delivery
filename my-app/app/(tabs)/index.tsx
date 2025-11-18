@@ -11,20 +11,28 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import RestaurantList from "../../components/RestaurantList";
 import DeliverTo from "@/components/DeliverTo";
-import { useCart } from "../../components/CartContext";
+import { useCart } from "../context/CartContext";
 import { Link, Href } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import { shadows } from "@/lib/shadowStyles";
 import { API_URL } from "@/lib/apiConfig";
+import { useAddress } from "@/app/context/AddressContext";   // <-- thêm import
 
 export default function HomePage() {
   const { user } = useUser();
+  const { currentAddress, currentLocation } = useAddress();  // <-- lấy address + tọa độ
+
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
-  // ✅ Category state (lấy từ Strapi)
   const [categories, setCategories] = useState<any[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+
+  // 🔎 Log khi có location mới
+  useEffect(() => {
+    console.log("📍 Current Address:", currentAddress);
+    console.log("🛰 Current Location:", currentLocation);
+  }, [currentAddress, currentLocation]);
 
   useEffect(() => {
     async function fetchCategories() {
@@ -32,14 +40,12 @@ export default function HomePage() {
         const res = await fetch(`${API_URL}/api/categories`);
         const json = await res.json();
 
-
         const formatted = json.data.map((c: any) => ({
           id: c.documentId,
           name: c.Name || c.name,
           icon: c.icon || "fast-food-outline",
         }));
 
-        // ✅ Add "All" manually
         setCategories([{ id: "all", name: "All", icon: "flame" }, ...formatted]);
       } catch (e) {
         console.log("❌ Fetch categories error:", e);
@@ -68,7 +74,6 @@ export default function HomePage() {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
@@ -91,7 +96,6 @@ export default function HomePage() {
           Hi {firstName}, {getGreeting()}! 👋
         </Text>
 
-        {/* Search */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
           <TextInput
@@ -103,17 +107,12 @@ export default function HomePage() {
           />
         </View>
 
-        {/* Categories */}
         <View style={styles.categoriesHeader}>
           <Text style={styles.sectionTitle}>All Categories</Text>
           <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesScroll}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
           {loadingCategories ? (
             <Text style={{ color: "#999" }}>Loading...</Text>
           ) : (
@@ -145,7 +144,6 @@ export default function HomePage() {
         </ScrollView>
       </View>
 
-      {/* Restaurants */}
       <View style={styles.restaurantsHeader}>
         <Text style={styles.sectionTitle}>Open Restaurants</Text>
         <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
@@ -155,6 +153,10 @@ export default function HomePage() {
     </ScrollView>
   );
 }
+
+
+// Styles giữ nguyên …
+
 
 /* ✅ Styles giữ nguyên */
 const styles = StyleSheet.create({
