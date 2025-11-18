@@ -44,11 +44,9 @@ module.exports = {
             .query("api::order-item.order-item")
             .create({
               data: {
-                name: item.name,
+                dish: item.dishId,
                 price: item.price,
                 quantity: item.quantity,
-                restaurant: restaurantId,
-                image: item.image || null,
               },
             });
           createdItems.push(newItem.id);

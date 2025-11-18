@@ -180,7 +180,7 @@ export default function Revenue({ token: tokenProp, user: userProp }: RevenuePro
       url.searchParams.append("fields[0]", "name");
       url.searchParams.append("fields[1]", "id");
       if (withManagerFilter) {
-        url.searchParams.append("filters[managers][id][$eq]", String(managerId));
+        url.searchParams.append("filters[manager][id][$eq]", String(managerId));
       }
       return url;
     };
@@ -608,10 +608,8 @@ export default function Revenue({ token: tokenProp, user: userProp }: RevenuePro
         }}
       >
         <SummaryCard label="Tổng doanh thu" value={currencyFormatter.format(totalRevenue)} accent="#ff6f2c" />
-        <SummaryCard label="Doanh thu tháng này" value={currencyFormatter.format(monthlyRevenue)} accent="#0ea5e9" />
         <SummaryCard label="Đơn đã thanh toán" value={totalPaidOrders} accent="#10b981" />
         <SummaryCard label="Đơn đã giao" value={totalDeliveredOrders} accent="#6366f1" />
-        <SummaryCard label="Giá trị trung bình" value={currencyFormatter.format(averageOrderValue || 0)} accent="#f59e0b" />
         <SummaryCard label="Tổng đơn" value={totalOrders} accent="#6b7280" />
       </div>
 
