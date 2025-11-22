@@ -56,6 +56,18 @@
     },
     "address": {
       "type": "text"
+    },
+    "manager": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "plugin::users-permissions.user",
+      "inversedBy": "restaurant"
+    },
+    "phone": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 10,
+      "regex": "^0[0-9]{9}$"
     }
   }
 }

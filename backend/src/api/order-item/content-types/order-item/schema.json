@@ -9,24 +9,26 @@
   "options": {
     "draftAndPublish": true
   },
-  "pluginOptions": {},
   "attributes": {
     "order": {
       "type": "relation",
-      "relation": "oneToOne",
+      "relation": "manyToOne",
       "target": "api::order.order",
-      "inversedBy": "order_item"
+      "inversedBy": "order_items"
     },
     "dish": {
       "type": "relation",
-      "relation": "oneToOne",
+      "relation": "manyToOne",
       "target": "api::dish.dish"
     },
     "price": {
       "type": "decimal"
     },
-    "quatity": {
+    "quantity": {
       "type": "integer"
+    },
+    "notes": {
+      "type": "string"
     }
   }
 }

@@ -1,19 +1,21 @@
 'use strict';
-// const { Server } = require('socket.io');
-// const droneSim = require('../drone-sim');
+const { Server } = require('socket.io');
 
 module.exports = {
   register() {},
+
   async bootstrap({ strapi }) {
-    const httpServer = strapi.server.httpServer;
-    // const io = new Server(httpServer, {
-    //   cors: { origin: '*' },
-    //   path: '/socket.io/',
-    // });
+    const io = new Server(strapi.server.httpServer, {
+      cors: { origin: "*" },
+      path: "/socket.io/",
+    });
 
-    // strapi.io = io;
-    // droneSim.init(io);
+    strapi.io = io;
 
-    // console.log('✅ Socket.IO đã khởi tạo. Chờ client yêu cầu "drone:start".');
+    io.on("connection", (socket) => {
+      console.log("🔗 Client:", socket.id);
+    });
+
+    console.log("🚀 Socket.IO ready");
   },
 };

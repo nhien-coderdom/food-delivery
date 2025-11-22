@@ -1,10 +1,9 @@
 "use strict";
 
 const crypto = require("crypto");
-const moment = require("moment");
 const qs = require("qs");
+const moment = require("moment");
 
-// Hàm sắp xếp & encode đúng chuẩn VNPAY
 function sortObject(obj) {
   const sorted = {};
   const keys = Object.keys(obj).sort();
@@ -15,158 +14,174 @@ function sortObject(obj) {
 }
 
 module.exports = {
-  // 🧾 B1: Tạo link thanh toán + lưu đơn "unpaid"
+  // ============================================
+  // B1: CREATE PAYMENT
+  // ============================================
   async create(ctx) {
     try {
-      const { amount, orderId, restaurantId, userId, items } = ctx.request.body;
-      console.log("📦 Payload nhận từ client:", ctx.request.body);
+      const body = ctx.request.body;
+      const orderID = String(body.orderId); // LUÔN DÙNG orderID
 
-      // Kiểm tra dữ liệu bắt buộc
-      if (!amount || !restaurantId || !userId) {
-        return ctx.badRequest("Thiếu thông tin đơn hàng");
-      }
-
-      // 🔍 Kiểm tra order đã tồn tại chưa (dựa vào orderID)
-      const existingOrder = await strapi.db.query("api::order.order").findOne({
-        where: { order_id: orderId },
-      });
-
-      if (existingOrder) {
-        console.log(`⚠️ Order ${orderId} đã tồn tại, bỏ qua tạo mới`);
-        return ctx.send({ paymentUrl: existingOrder.paymentUrl });
-      }
-
-      // 🧩 Tạo từng order_item (vì item chưa có ID thật)
-      let createdItems = [];
-      if (Array.isArray(items) && items.length > 0) {
-        for (const item of items) {
-          const newItem = await strapi.db
-            .query("api::order-item.order-item")
-            .create({
-              data: {
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity,
-                restaurant: restaurantId,
-                image: item.image || null,
-              },
-            });
-          createdItems.push(newItem.id);
-        }
-      }
-
-      // 🧾 Lưu đơn hàng tạm (pending / unpaid)
-      const newOrder = await strapi.db.query("api::order.order").create({
+      // Lưu đơn tạm
+      await strapi.entityService.create("api::payment-temp.payment-temp", {
         data: {
-          order_id: String(orderId), // 🔑 dùng đúng field UID của bạn
-          totalPrice: amount,
-          statusOrder: "pending",
-          paymentStatus: "unpaid",
-          restaurant: restaurantId,
-          users_permissions_user: userId,
-          order_item: createdItems,
+          orderID,
+          payload: body,
+          publishedAt: new Date(),
         },
       });
-      console.log("✅ Order created in DB:", newOrder);
-      // 🧩 Tạo link thanh toán hợp lệ VNPAY
-      let ipAddr =
-        ctx.request.header["x-forwarded-for"] ||
-        ctx.request.ip ||
-        "127.0.0.1";
-      if (ipAddr.includes("::1")) ipAddr = "127.0.0.1";
 
+      // Generate VNPAY URL
+      let ipAddr = ctx.request.ip.includes("::1") ? "127.0.0.1" : ctx.request.ip;
       const now = moment();
       const createDate = now.format("YYYYMMDDHHmmss");
       const expireDate = now.add(15, "minutes").format("YYYYMMDDHHmmss");
 
-      const tmnCode = process.env.VNP_TMN_CODE;
-      const secretKey = process.env.VNP_SECRET_KEY;
-      const vnpUrl = process.env.VNP_PAYMENT_URL;
-      const returnUrl = process.env.VNP_RETURN_URL;
-
-      const orderInfo = `Thanh toan don hang ${orderId} thoi gian: ${moment().format(
-        "YYYY-MM-DD HH:mm:ss"
-      )}`;
-
-      let vnp_Params = {
+      let params = {
         vnp_Version: "2.1.0",
         vnp_Command: "pay",
-        vnp_TmnCode: tmnCode,
-        vnp_Amount: amount * 100,
+        vnp_TmnCode: process.env.VNP_TMN_CODE,
+        vnp_Amount: body.amount * 100,
         vnp_CurrCode: "VND",
-        vnp_TxnRef: orderId,
-        vnp_OrderInfo: orderInfo,
-        vnp_OrderType: "other",
+        vnp_TxnRef: orderID, // SỬA ĐÚNG
+        vnp_OrderInfo: `PAY|${orderID}`, // SỬA ĐÚNG
+        vnp_OrderType: "bill",
         vnp_Locale: "vn",
-        vnp_ReturnUrl: returnUrl,
+        vnp_ReturnUrl: process.env.VNP_RETURN_URL,
         vnp_IpAddr: ipAddr,
         vnp_CreateDate: createDate,
         vnp_ExpireDate: expireDate,
       };
 
-      vnp_Params = sortObject(vnp_Params);
-      const signData = qs.stringify(vnp_Params, { encode: false });
-      const hmac = crypto.createHmac("sha512", secretKey);
-      const signed = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
-      vnp_Params["vnp_SecureHash"] = signed;
+      params = sortObject(params);
 
-      const query = qs.stringify(vnp_Params, { encode: false });
-      const paymentUrl = `${vnpUrl}?${query}`;
+      const signData = qs.stringify(params, { encode: false });
+      const hmac = crypto.createHmac("sha512", process.env.VNP_SECRET_KEY);
+      params["vnp_SecureHash"] = hmac.update(Buffer.from(signData, "utf-8")).digest("hex");
 
-      console.log("✅ VNPAY payment URL:", paymentUrl);
+      const paymentUrl =
+        process.env.VNP_PAYMENT_URL + "?" + qs.stringify(params, { encode: false });
+
       return ctx.send({ paymentUrl });
     } catch (err) {
-      console.error("❌ Payment create error:", err);
-      return ctx.badRequest("Không thể tạo link thanh toán");
+      console.error("❌ CREATE ERROR:", err);
+      return ctx.badRequest("Lỗi tạo link thanh toán");
     }
   },
 
-  // 🟢 B2: Callback khi thanh toán xong
+  // ============================================
+  // B2: RETURN (TẠO ORDER THẬT)
+  // ============================================
   async return(ctx) {
-    const query = ctx.request.query;
-    const secureHash = query.vnp_SecureHash;
-    delete query.vnp_SecureHash;
-    delete query.vnp_SecureHashType;
-
-    const signData = qs.stringify(sortObject(query), { encode: false });
-    const signed = crypto
-      .createHmac("sha512", process.env.VNP_SECRET_KEY)
-      .update(Buffer.from(signData, "utf-8"))
-      .digest("hex");
-
-    if (secureHash !== signed) {
-      return ctx.badRequest("Sai chữ ký");
-    }
-
-    const vnp_TxnRef = query.vnp_TxnRef;
-    const vnp_ResponseCode = query.vnp_ResponseCode;
-    const transactionCode = query.vnp_TransactionNo;
-
     try {
-      if (vnp_ResponseCode === "00") {
-        await strapi.db.query("api::order.order").update({
-          where: { order_id: vnp_TxnRef },
+      const query = ctx.request.query;
+      const secureHash = query.vnp_SecureHash;
+
+      delete query.vnp_SecureHash;
+      delete query.vnp_SecureHashType;
+
+      const sorted = sortObject(query);
+      const signData = qs.stringify(sorted, { encode: false });
+
+      const signed = crypto
+        .createHmac("sha512", process.env.VNP_SECRET_KEY)
+        .update(Buffer.from(signData, "utf-8"))
+        .digest("hex");
+
+      const orderID = query.vnp_TxnRef; // SỬA TÊN CHUẨN
+
+      // Lấy temp
+      const temp = await strapi.db
+        .query("api::payment-temp.payment-temp")
+        .findOne({ where: { orderID } });
+
+      if (!temp) {
+        return ctx.redirect("http://localhost:8081/checkout/fail?reason=no-temp");
+      }
+
+      const data = temp.payload;
+      const callback = data.callbackUrl;
+
+      // Detect Web vs App
+      const ua = ctx.request.header["user-agent"] || "";
+      const isWeb =
+        ua.includes("Mozilla") || ua.includes("Chrome") || ua.includes("Safari");
+
+      // ❌ Sai chữ ký
+      if (signed !== secureHash) {
+        if (isWeb) {
+          return ctx.redirect("http://localhost:8081/checkout/fail?reason=signature");
+        }
+        return ctx.redirect(callback + "?failed=1&reason=signature");
+      }
+
+      // ✔ Thành công
+      if (query.vnp_ResponseCode === "00") {
+        const order = await strapi.entityService.create("api::order.order", {
           data: {
+            orderID: data.orderId,
+            totalPrice: data.amount,
             paymentStatus: "paid",
-            statusOrder: "pending",
-            transactionCode,
-            updatedAt: new Date(),
+            statusOrder: "confirmed",
+            phoneNumber: data.customerPhone,
+            deliveryAddress: data.deliveryAddress,
+            note: data.note || "",
+            restaurant: data.restaurantId,
+            users_permissions_user: data.userId,
+            drone_location: data.coords,
+            route: data.route,
+            customerLocation: data.coords,
+            transactionID: query.vnp_TransactionNo,
+            publishedAt: new Date(),
           },
         });
 
-        console.log(`✅ Đơn ${vnp_TxnRef} thanh toán thành công.`);
-        return ctx.redirect("http://localhost:8081/checkout/success");
-      } else {
-        console.log(`❌ Đơn ${vnp_TxnRef} thất bại.`);
-        return ctx.redirect("http://localhost:8081/checkout/fail");
+        // Order items
+        for (const item of data.items) {
+          await strapi.entityService.create("api::order-item.order-item", {
+            data: {
+              price: item.price,
+              quantity: item.quantity,
+              dish: item.dishId,
+              order: order.id,
+              publishedAt: new Date(),
+            },
+          });
+        }
+
+        // Xoá temp theo orderID (đã sửa)
+        await strapi.db
+          .query("api::payment-temp.payment-temp")
+          .delete({ where: { orderID } });
+
+        // Drone simulator
+        const simulator = strapi.service("api::drone-simulator.drone-simulator");
+        if (simulator) simulator.simulate(strapi, order);
+
+        // Redirect theo Web / App
+        if (isWeb) {
+          return ctx.redirect(
+            `http://localhost:8081/checkout/success?orderId=${orderID}`
+          );
+        }
+
+        return ctx.redirect(callback + `?orderId=${orderID}`);
       }
+
+      // ❌ Không thành công
+      if (isWeb) {
+        return ctx.redirect(`http://localhost:8081/checkout/fail?orderId=${orderID}`);
+      }
+      return ctx.redirect(callback + `?orderId=${orderID}&failed=1`);
     } catch (err) {
-      console.error("❌ Error in return callback:", err);
-      return ctx.redirect("http://localhost:8081/checkout/fail");
+      console.error("❌ RETURN ERROR:", err);
+      return ctx.redirect("http://localhost:8081/checkout/fail?reason=server");
     }
   },
 
-  // 📨 B3: IPN xác nhận từ server VNPAY
+  // ============================================
+  // B3: IPN
+  // ============================================
   async ipn(ctx) {
     try {
       const query = { ...ctx.request.query };
@@ -174,10 +189,7 @@ module.exports = {
       delete query.vnp_SecureHash;
       delete query.vnp_SecureHashType;
 
-      const sorted = Object.fromEntries(
-        Object.entries(query).sort(([a], [b]) => a.localeCompare(b))
-      );
-
+      const sorted = sortObject(query);
       const signData = qs.stringify(sorted, { encode: false });
       const signed = crypto
         .createHmac("sha512", process.env.VNP_SECRET_KEY)
@@ -185,24 +197,22 @@ module.exports = {
         .digest("hex");
 
       if (secureHash === signed) {
-        const { vnp_TxnRef, vnp_ResponseCode } = query;
-
-        if (vnp_ResponseCode === "00") {
-          console.log("✅ IPN xác nhận thanh toán:", vnp_TxnRef);
+        if (query.vnp_ResponseCode === "00") {
           await strapi.db.query("api::order.order").update({
-            where: { order_id: vnp_TxnRef },
-            data: { paymentStatus: "paid", statusOrder: "pending" },
+            where: { orderID: query.vnp_TxnRef },
+            data: {
+              paymentStatus: "paid",
+              statusOrder: "confirmed",
+            },
           });
         }
-
-        return ctx.send({ RspCode: "00", Message: "IPN OK" });
-      } else {
-        console.warn("⚠️ Sai chữ ký IPN");
-        return ctx.send({ RspCode: "97", Message: "Invalid signature" });
+        return ctx.send({ RspCode: "00", Message: "Success" });
       }
+
+      return ctx.send({ RspCode: "97", Message: "Invalid signature" });
     } catch (err) {
       console.error("IPN error:", err);
-      return ctx.send({ RspCode: "99", Message: "Unknown error" });
+      return ctx.send({ RspCode: "99", Message: "System Error" });
     }
   },
 };

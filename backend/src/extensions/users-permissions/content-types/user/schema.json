@@ -83,6 +83,12 @@
     },
     "location": {
       "type": "json"
+    },
+    "restaurant": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::restaurant.restaurant",
+      "mappedBy": "manager"
     }
   }
 }
