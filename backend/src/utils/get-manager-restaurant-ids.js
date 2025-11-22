@@ -11,7 +11,7 @@ module.exports = async function getManagerRestaurantIds(strapi, userId) {
 	const restaurants = await strapi.entityService.findMany('api::restaurant.restaurant', {
 		fields: ['id'],
 		populate: {
-			managers: {
+			manager: {
 				fields: ['id'],
 			},
 		},
@@ -78,7 +78,7 @@ module.exports = async function getManagerRestaurantIds(strapi, userId) {
 
 	return restaurants
 		.filter((restaurant) => {
-			const managerRelation = restaurant?.managers;
+			const managerRelation = restaurant?.manager;
 			const { numeric, string } = normalizeManagerId(managerRelation);
 			if (targetNumericId !== null && numeric !== null) {
 				return numeric === targetNumericId;
