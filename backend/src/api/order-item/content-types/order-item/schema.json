@@ -4,7 +4,7 @@
   "info": {
     "singularName": "order-item",
     "pluralName": "order-items",
-    "displayName": "orderItem"
+    "displayName": "Order Item"
   },
   "options": {
     "draftAndPublish": true
@@ -14,18 +14,21 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::order.order",
-      "inversedBy": "order_items"
+      "inversedBy": "items"
     },
     "dish": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::dish.dish"
+      "target": "api::dish.dish",
+      "required": true
     },
     "price": {
-      "type": "decimal"
+      "type": "decimal",
+      "required": true
     },
     "quantity": {
-      "type": "integer"
+      "type": "integer",
+      "required": true
     },
     "notes": {
       "type": "string"
