@@ -12,7 +12,7 @@ export default function Index() {
 
     // Nếu đã đăng nhập => vào home
     if (isSignedIn) {
-      router.replace("./(tabs) ");
+      router.replace("/(tabs)");
     } else {
       // Nếu chưa đăng nhập => hiện login
       router.replace("/auth/login");

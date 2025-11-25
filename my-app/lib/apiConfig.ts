@@ -1,84 +1,89 @@
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { Platform } from "react-native";
+import Constants from "expo-constants";
+
+/** 
+ * 🔥 ĐỔI IP Ở ĐÂY DUY NHẤT
+ * IP MÁY DEV của bạn (LAN)
+ * Ví dụ: http://10.10.30.181/
+ */
+const LOCAL_IP = "http://10.10.30.181/";
+const DEFAULT_API = `http://${LOCAL_IP}:1337`;
 
 /**
- * Lấy đúng API URL cho từng platform
- * - Web: localhost:1337
- * - iOS Simulator: localhost:1337  
- * - Android Emulator: 10.0.2.2:1337 (là localhost của máy host)
- * - Android/iOS Device: IP của máy dev (từ Expo debugger)
+ * 🎯 Hàm quyết định API URL cho Web / Android / iOS
  */
 export const getApiUrl = (): string => {
-  // Lấy từ env trước
   const envUrl = process.env.EXPO_PUBLIC_STRAPI_URL;
-  
-  // Nếu có env URL và không phải localhost, dùng nó
-  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
-    console.log('📱 Using env URL:', envUrl);
+
+  // Nếu có ENV URL và nó KHÔNG phải localhost → dùng luôn
+  if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+    console.log("🌍 Using ENV URL:", envUrl);
     return envUrl;
   }
-  
-  // Web: dùng localhost
-  if (Platform.OS === 'web') {
-    const url = envUrl || 'http://localhost:1337';
-    console.log('🌐 Web - Using:', url);
-    return url;
+
+  // -------------------------
+  // 🌐 WEB (luôn chạy trên localhost)
+  // -------------------------
+  if (Platform.OS === "web") {
+    console.log("🌐 Web using:", DEFAULT_API);
+    return envUrl || DEFAULT_API;
   }
-  
-  // Android Emulator: dùng 10.0.2.2 (localhost của máy host)
-  if (Platform.OS === 'android') {
-    // Nếu env có localhost, đổi thành 10.0.2.2
-    if (envUrl && envUrl.includes('localhost')) {
-      const url = envUrl.replace('localhost', '10.0.2.2');
-      console.log('🤖 Android Emulator - Using:', url);
-      return url;
+
+  // -------------------------
+  // 🤖 ANDROID DEVICE / EMULATOR
+  // -------------------------
+  if (Platform.OS === "android") {
+    if (envUrl && envUrl.includes("localhost")) {
+      const mapped = envUrl.replace("localhost", LOCAL_IP);
+      console.log("🤖 Android replace localhost →", mapped);
+      return mapped;
     }
-    const url = 'http://10.0.2.2:1337';
-    console.log('🤖 Android - Using:', url);
+    console.log("🤖 Android using:", DEFAULT_API);
+    return DEFAULT_API;
+  }
+
+  // -------------------------
+  // 🍎 iOS SIMULATOR / DEVICE
+  // -------------------------
+  if (Platform.OS === "ios") {
+    console.log("🍎 iOS using:", envUrl || DEFAULT_API);
+    return envUrl || DEFAULT_API;
+  }
+
+  // -------------------------
+  // 📱 PHYSICAL DEVICE (Expo Go)
+  // -------------------------
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(":")[0];
+    const url = `http://${host}:1337`;
+    console.log("📱 Expo device using host:", url);
     return url;
   }
-  
-  // iOS Simulator: có thể dùng localhost
-  if (Platform.OS === 'ios') {
-    const url = envUrl || 'http://localhost:1337';
-    console.log('🍎 iOS - Using:', url);
-    return url;
-  }
-  
-  // Fallback: lấy IP từ Expo debugger (cho physical device)
-  const debuggerHost = Constants.expoConfig?.hostUri?.split(':')[0];
-  if (debuggerHost) {
-    const url = `http://${debuggerHost}:1337`;
-    console.log('📱 Device - Using Expo host:', url);
-    return url;
-  }
-  
-  // Final fallback
-  console.warn('⚠️ Could not determine API URL, using localhost');
-  return 'http://localhost:1337';
+
+  console.warn("⚠️ Fallback API:", DEFAULT_API);
+  return DEFAULT_API;
 };
 
+// FINAL URL EXPORT
 export const API_URL = getApiUrl();
 
-// Helper để lấy full image URL
-export const getImageUrl = (imagePath: string | null | undefined): string => {
-  if (!imagePath) {
-    return 'https://via.placeholder.com/400x300?text=No+Image';
-  }
-  
-  // Nếu đã là URL đầy đủ, return luôn
-  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+/** 
+ * 🖼️ Format URL ảnh
+ */
+export const getImageUrl = (imagePath?: string | null): string => {
+  if (!imagePath) return "https://via.placeholder.com/400x300?text=No+Image";
+
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
     return imagePath;
   }
-  
-  // Nếu là relative path, ghép với API_URL
-  return `${API_URL}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
+
+  return `${API_URL}${imagePath.startsWith("/") ? "" : "/"}${imagePath}`;
 };
 
-// Log để debug
-console.log('='.repeat(50));
-console.log('🔗 API Configuration:');
-console.log('Platform:', Platform.OS);
-console.log('API URL:', API_URL);
-console.log('Env URL:', process.env.EXPO_PUBLIC_STRAPI_URL);
-console.log('='.repeat(50));
+// DEBUG
+console.log("==================================================");
+console.log("🔗 API Platform:", Platform.OS);
+console.log("🔗 API URL Selected:", API_URL);
+console.log("🔗 ENV URL:", process.env.EXPO_PUBLIC_STRAPI_URL);
+console.log("==================================================");

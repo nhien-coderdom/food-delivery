@@ -6,7 +6,7 @@ interface AuthContextProps {
   user: any;
   jwt: string | null;
   loading: boolean;
-  login: (user: any, token?: string) => Promise<void>;
+  login: (user: any, token: string) => Promise<void>;
   logout: () => Promise<void>;
   syncUserToStrapi: (clerkUser: any) => Promise<void>;
 }
@@ -25,7 +25,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [jwt, setJwt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 🟢 Load dữ liệu user & jwt khi mở app
   useEffect(() => {
     (async () => {
       try {
@@ -36,91 +35,56 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setJwt(storedJwt);
           setUser(JSON.parse(storedUser));
         }
-      } catch (err) {
-        console.warn("⚠️ Failed to load auth:", err);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  // 🟢 Lưu thông tin user & token sau khi login
-  const login = async (userData: any, token?: string) => {
-    try {
-      if (token) await AsyncStorage.setItem("jwt", token);
-      await AsyncStorage.setItem("user", JSON.stringify(userData));
+  const login = async (userData: any, token: string) => {
+    await AsyncStorage.setItem("jwt", token);
+    await AsyncStorage.setItem("user", JSON.stringify(userData));
 
-      setUser(userData);
-      if (token) setJwt(token);
-
-      console.log("✅ Logged in user:", userData);
-    } catch (err) {
-      console.error("⚠️ Failed to save user:", err);
-    }
+    setJwt(token);
+    setUser(userData);
   };
 
-  // 🟢 Đăng xuất, xóa cache
   const logout = async () => {
-    try {
-      await AsyncStorage.multiRemove(["jwt", "user"]);
-      setUser(null);
-      setJwt(null);
-      console.log("👋 Logged out");
-    } catch (err) {
-      console.error("⚠️ Failed to logout:", err);
-    }
+    await AsyncStorage.multiRemove(["jwt", "user"]);
+    setJwt(null);
+    setUser(null);
   };
 
-  // 🟢 Đồng bộ Clerk → Strapi (đảm bảo có user.id thật trong Strapi)
-  // ✅ Hàm đồng bộ user Clerk → Strapi (luôn có id Strapi)
-const syncUserToStrapi = async (clerkUser: any) => {
-  try {
-    if (!clerkUser) throw new Error("No Clerk user provided");
+  const syncUserToStrapi = async (clerkUser: any) => {
+    try {
+      const email = clerkUser.emailAddresses[0].emailAddress;
 
-    const email = clerkUser.emailAddresses?.[0]?.emailAddress;
-    const clerkUserID = clerkUser.id;
+      const res = await fetch(`${API_URL}/api/sync-clerk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          clerkUserID: clerkUser.id,
+          username: clerkUser.username || clerkUser.firstName,
+          provider: "clerk",
+        }),
+      });
 
-    if (!email || !clerkUserID) {
-      throw new Error("Missing required fields (email, clerkUserID)");
+      const data = await res.json();
+
+      if (data?.user && data?.jwt) {
+        await login(data.user, data.jwt);
+      }
+    } catch (err) {
+      console.error("❌ Sync User Error:", err);
     }
-
-    const res = await fetch(`${API_URL}/api/sync-clerk`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clerkUserID,
-        email,
-        username: clerkUser.username || clerkUser.firstName || "user",
-        provider: "clerk",
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("❌ Sync Clerk User Error:", data);
-      throw new Error(data?.error?.message || "Failed to sync user");
-    }
-
-    if (data?.user?.id) {
-      console.log("✅ Synced user to Strapi:", data.user);
-      await login(data.user); // 👈 Lưu user vào AsyncStorage + state
-    } else {
-      console.warn("⚠️ Strapi did not return user.id:", data);
-    }
-  } catch (err) {
-    console.error("❌ Sync Clerk User Error:", err);
-  }
-};
-
+  };
 
   return (
-    <AuthContext.Provider
-      value={{ user, jwt, loading, login, logout, syncUserToStrapi }}
-    >
+    <AuthContext.Provider value={{ user, jwt, loading, login, logout, syncUserToStrapi }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => useContext(AuthContext);
-export default AuthContext;

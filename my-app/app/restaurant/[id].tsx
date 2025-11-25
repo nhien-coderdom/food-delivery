@@ -15,6 +15,7 @@ import { useCart } from "@/app/context/CartContext";
 import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/app/context/AuthContext";
 
 // Format tiền tệ
 const formatVND = (num: number) =>
@@ -31,6 +32,7 @@ export default function RestaurantDetail() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [selectedCat, setSelectedCat] = useState("all");
   const [loading, setLoading] = useState(true);
+  const { jwt } = useAuth();
 
   // ✅ Context mới — không cần getItemQuantity
   const { addItem, updateQuantity, selectRestaurant, currentCart } = useCart();
@@ -38,23 +40,37 @@ export default function RestaurantDetail() {
   useEffect(() => {
     async function fetchRestaurant() {
       try {
-        const data = await fetch(
-          `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[dishes][populate][image]=true&populate[dishes][populate][category]=true&populate[categories]=true`
+        const res = await fetch(
+          `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[categories]=true&populate[dishes][populate]=image&populate[dishes][populate]=category`,
+          {
+            headers: {
+              Authorization: `Bearer ${jwt}`, // 🔥 BẮT BUỘC
+            },
+          }
         );
-        const json = await data.json();
-        const res = json.data?.[0];
-        setRestaurant(res);
-        if (res) {
-          selectRestaurant(res.id, res.name); // ✅ Chọn đúng giỏ cho nhà hàng này
+
+        if (!res.ok) {
+          console.log("❌ Restaurant API error:", await res.text());
+          throw new Error("Failed to fetch restaurant");
+        }
+
+        const json = await res.json();
+        const restaurantData = json.data?.[0];
+
+        setRestaurant(restaurantData);
+
+        if (restaurantData) {
+          selectRestaurant(restaurantData.id, restaurantData.name);
         }
       } catch (err) {
-        console.warn("Lỗi tải dữ liệu nhà hàng:", err);
+        console.warn("❌ Lỗi tải dữ liệu nhà hàng:", err);
       } finally {
         setLoading(false);
       }
     }
-    fetchRestaurant();
-  }, [id]);
+
+    if (jwt) fetchRestaurant();   // chỉ fetch khi jwt có
+  }, [id, jwt]);
 
   if (loading)
     return <ActivityIndicator style={{ marginTop: 80 }} size="large" color="#FF6B35" />;
@@ -88,7 +104,10 @@ export default function RestaurantDetail() {
           resizeMode="contain"
         />
 
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Pressable onPress={() => {
+          if (router.canGoBack()) router.back();
+          else router.push("/");
+        }} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </Pressable>
       </View>
@@ -259,16 +278,16 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: "row", gap: 12, marginTop: 6 },
   iconBadge: { flexDirection: "row", gap: 4, alignItems: "center" },
   infoText: { fontSize: 13, color: "#4B5563", fontWeight: "500" },
-  detailRow: { 
-    flexDirection: "row", 
-    gap: 6, 
-    alignItems: "center", 
-    marginTop: 8 
+  detailRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    marginTop: 8
   },
-  detailText: { 
-    fontSize: 13, 
-    color: "#6B7280", 
-    flex: 1 
+  detailText: {
+    fontSize: 13,
+    color: "#6B7280",
+    flex: 1
   },
   description: {
     fontSize: 14,
