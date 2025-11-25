@@ -193,7 +193,7 @@ const mapOrderItem = (raw: any): OrderItem | null => {
   const dishNameCandidates = [dishAttributes?.name, (dishAttributes as any)?.title, (dishAttributes as any)?.label];
   const dishName = dishNameCandidates.find((candidate) => typeof candidate === "string" && candidate.trim() !== "");
 
-  const quantityRaw = (attributes as any)?.quantity ?? (attributes as any)?.quatity ?? 0;
+  const quantityRaw = (attributes as any)?.quatity ?? (attributes as any)?.quantity ?? 0;
   const quantityValue = Number(quantityRaw);
   const quantity = Number.isFinite(quantityValue) ? quantityValue : 0;
 
@@ -205,9 +205,9 @@ const mapOrderItem = (raw: any): OrderItem | null => {
     id: Number.isFinite(Number(idValue)) ? Number(idValue) : null,
     dishId: Number.isFinite(Number(dishIdValue)) ? Number(dishIdValue) : null,
     dishName: dishName ? String(dishName) : "Món ăn",
-    quantity: quantity > 0 ? quantity : 0,
+    quantity,
     price,
-    subtotal: price * (quantity > 0 ? quantity : 0),
+    subtotal: price * quantity,
   };
 };
 
@@ -272,7 +272,7 @@ const mapOrder = (raw: any): Order => {
     (candidate) => typeof candidate === "string" && candidate.trim() !== ""
   );
 
-  const itemsContainer = attributes?.order_item ?? (raw as any)?.order_item ?? [];
+  const itemsContainer = attributes?.order_items ?? (raw as any)?.order_items ?? [];
   let itemEntries: any[] = [];
   if (Array.isArray(itemsContainer?.data)) {
     itemEntries = itemsContainer.data;
@@ -423,7 +423,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       url.searchParams.append("fields[0]", "name");
       url.searchParams.append("fields[1]", "id");
       if (withManagerFilter) {
-        url.searchParams.append("filters[managers][id][$eq]", String(managerId));
+        url.searchParams.append("filters[manager][id][$eq]", String(managerId));
       }
       return url;
     };
@@ -545,11 +545,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
           url.searchParams.append("filters[restaurant][id][$eq]", String(targetRestaurantId));
         }
         url.searchParams.append("sort[0]", "createdAt:desc");
-        url.searchParams.append("populate[restaurant][fields][0]", "name");
-        url.searchParams.append("populate[users_permissions_user][fields][0]", "username");
-        url.searchParams.append("populate[users_permissions_user][fields][1]", "email");
-        url.searchParams.append("populate[order_item][populate][dish][fields][0]", "name");
-        url.searchParams.append("populate[order_item][populate][dish][fields][1]", "price");
+        url.searchParams.append("populate", "*");
 
         const response = await fetch(url.toString(), {
           headers: { Authorization: `Bearer ${resolvedToken}` },
@@ -772,18 +768,26 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ marginBottom: 20 }}>
+      <div
+        style={{
+          background: "linear-gradient(135deg, #ff6f2c 0%, #e25a00 100%)",
+          borderRadius: 20,
+          padding: "24px 28px",
+          marginBottom: 24,
+          boxShadow: "0 8px 24px rgba(255,111,44,0.25)",
+        }}
+      >
         <h2
           style={{
-            fontSize: 28,
+            fontSize: 32,
             fontWeight: 800,
-            color: "#e25a00",
-            marginBottom: 6,
+            color: "white",
+            marginBottom: 8,
           }}
         >
           📦 Quản lý đơn hàng
         </h2>
-        <p style={{ color: "#6b7280" }}>
+        <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 15 }}>
           Theo dõi trạng thái đơn, cập nhật thanh toán và xem chi tiết món trong từng đơn hàng.
         </p>
       </div>
@@ -812,20 +816,32 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       <div
         style={{
           background: "white",
-          border: "1px solid #ffcfa9",
-          borderRadius: 16,
-          padding: 20,
-          boxShadow: "0 8px 24px rgba(255,138,31,0.06)",
+          border: "1px solid #ffe8d6",
+          borderRadius: 20,
+          padding: "24px 28px",
+          boxShadow: "0 4px 20px rgba(255,111,44,0.08)",
           marginBottom: 24,
         }}
       >
+        <h3
+          style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: "#e25a00",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          🔍 Bộ lọc đơn hàng
+        </h3>
         <div
           style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 16,
             marginBottom: 16,
-            alignItems: "flex-end",
           }}
         >
           <ControlField label="Trạng thái đơn">
@@ -867,6 +883,15 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             />
           </ControlField>
 
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
             onClick={() => {
@@ -877,15 +902,15 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             style={{
               background: "white",
               color: "#e25a00",
-              borderRadius: 9999,
-              border: "1px solid #ffcfa9",
-              padding: "10px 22px",
+              borderRadius: 12,
+              border: "2px solid #ffe8d6",
+              padding: "10px 24px",
               fontWeight: 600,
               cursor: "pointer",
-              marginLeft: "auto",
+              fontSize: 14,
             }}
           >
-            Bỏ lọc
+            🗑️ Bỏ lọc
           </button>
 
           <button
@@ -893,33 +918,75 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             onClick={handleRefresh}
             disabled={listLoading}
             style={{
-              background: "#ff6f2c",
+              background: "linear-gradient(135deg, #ff6f2c 0%, #e25a00 100%)",
               color: "white",
               border: "none",
-              borderRadius: 9999,
-              padding: "10px 22px",
+              borderRadius: 12,
+              padding: "10px 24px",
               fontWeight: 600,
               cursor: listLoading ? "not-allowed" : "pointer",
               opacity: listLoading ? 0.7 : 1,
+              boxShadow: "0 4px 12px rgba(255,111,44,0.3)",
+              fontSize: 14,
               display:
                 typeof selectedRestaurantId === "number" && Number.isFinite(selectedRestaurantId)
                   ? undefined
                   : "none",
             }}
           >
-            {listLoading ? "Đang tải..." : "Làm mới"}
+            {listLoading ? "⏳ Đang tải..." : "🔄 Làm mới"}
           </button>
         </div>
 
         {listLoading ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "40px 20px",
+              color: "#6b7280",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 48,
+                marginBottom: 16,
+                animation: "spin 2s linear infinite",
+              }}
+            >
+              ⏳
+            </div>
           <p>Đang tải danh sách đơn hàng...</p>
+          </div>
         ) : filteredOrders.length === 0 ? (
-          <p style={{ color: "#6b7280" }}>Chưa có đơn hàng nào phù hợp với bộ lọc hiện tại.</p>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px 20px",
+              background: "#fff5eb",
+              borderRadius: 16,
+            }}
+          >
+            <div style={{ fontSize: 64, marginBottom: 16 }}>📭</div>
+            <p style={{ color: "#6b7280", fontSize: 16 }}>
+              Chưa có đơn hàng nào phù hợp với bộ lọc hiện tại.
+            </p>
+          </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div
+            style={{
+              overflowX: "auto",
+              borderRadius: 16,
+              border: "1px solid #ffe8d6",
+            }}
+          >
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ textAlign: "left", background: "#fff0e2" }}>
+                <tr
+                  style={{
+                    textAlign: "left",
+                    background: "linear-gradient(135deg, #fff5eb 0%, #ffe8d6 100%)",
+                  }}
+                >
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Mã đơn</th>
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Khách hàng</th>
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Liên hệ</th>
@@ -970,7 +1037,6 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                         {order.createdAt ? dateTimeFormatter.format(new Date(order.createdAt)) : "—"}
                       </td>
                       <td style={{ padding: "12px", verticalAlign: "top" }}>
-                        <div style={{ display: "flex", gap: 8 }}>
                           <button
                             type="button"
                             onClick={() => setSelectedOrderId(order.id)}
@@ -982,11 +1048,15 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                               padding: "6px 14px",
                               fontWeight: 600,
                               cursor: "pointer",
+                            fontSize: 13,
+                            transition: "all 0.2s",
+                            boxShadow: isSelected
+                              ? "0 4px 12px rgba(16,185,129,0.3)"
+                              : "none",
                             }}
                           >
-                            Xem chi tiết
+                          {isSelected ? "✓ Đang xem" : "👁️ Chi tiết"}
                           </button>
-                        </div>
                       </td>
                     </tr>
                   );
