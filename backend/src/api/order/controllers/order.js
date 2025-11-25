@@ -1,30 +1,42 @@
+// D:\food-delivery\backend\src\api\order\controllers\order.js
 "use strict";
 
 const { createCoreController } = require("@strapi/strapi").factories;
 
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
-
   // ==================================================
   // PUBLIC: Lấy order theo orderID (string UID)
+  // GET /api/orders/by-order-id/:orderID
   // ==================================================
   async findByOrderID(ctx) {
     const orderID = ctx.params.orderID;
 
-    const orders = await strapi.entityService.findMany("api::order.order", {
-      filters: { orderID },
-      populate: {
-        restaurant: true,
-        users_permissions_user: true,
-        order_items: {
-          populate: ["dish"],
+    try {
+      console.log('[order.findByOrderID] params:', ctx.params);
+
+      const orders = await strapi.entityService.findMany("api::order.order", {
+        filters: { orderID },
+        populate: {
+          restaurant: true,
+          users_permissions_user: true,
+          items: {
+            populate: ["dish"],
+          },
         },
-      },
-      limit: 1,
-    });
+        limit: 1,
+      });
 
-    if (!orders.length) return ctx.notFound("Order not found");
+      if (!orders.length) {
+        console.warn('[order.findByOrderID] not found for', orderID);
+        return ctx.notFound("Order not found");
+      }
 
-    return { data: orders[0] };
+      return { data: orders[0] };
+    } catch (err) {
+      console.error('[order.findByOrderID] error:', err);
+      // Return a 400 with error message for easier debugging (temporary)
+      return ctx.badRequest('Error fetching order', { detail: err.message || err });
+    }
   },
 
   // ==================================================
@@ -38,7 +50,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       filters: { users_permissions_user: user.id },
       populate: {
         restaurant: true,
-        order_items: { populate: ["dish"] },
+        items: { populate: ["dish"] },
       },
       sort: { createdAt: "DESC" },
     });
@@ -47,7 +59,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   },
 
   // ==================================================
-  // User tạo đơn
+  // User tạo đơn (nếu dùng flow không VNPAY)
   // ==================================================
   async create(ctx) {
     const { user } = ctx.state;
@@ -62,7 +74,8 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         statusOrder: "pending",
       },
     });
-
+    const simulator = strapi.service("api::drone-simulator.drone-simulator");
+    simulator.simulate(strapi, newOrder);
     return { data: newOrder };
   },
 
@@ -76,7 +89,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     const orders = await strapi.entityService.findMany("api::order.order", {
       filters: { restaurant: restaurantId },
       populate: {
-        order_items: { populate: ["dish"] },
+        items: { populate: ["dish"] },
         restaurant: true,
         users_permissions_user: true,
       },
@@ -94,7 +107,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
 
     const order = await strapi.entityService.findOne("api::order.order", id, {
       populate: {
-        order_items: { populate: ["dish"] },
+        items: { populate: ["dish"] },
         restaurant: true,
         users_permissions_user: true,
       },
@@ -107,6 +120,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
 
   // ==================================================
   // Manager cập nhật đơn + trigger drone simulator
+  // PUT /api/orders/manager/:id
   // ==================================================
   async managerUpdate(ctx) {
     const id = ctx.params.id;
@@ -184,5 +198,4 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
 
     return { data: updated };
   },
-
 }));

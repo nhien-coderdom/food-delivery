@@ -1,55 +1,52 @@
-'use strict';
+"use strict";
 
 /**
  * category controller
  */
 
-const { createCoreController } = require('@strapi/strapi').factories;
-const getManagerRestaurantIds = require('../../../utils/get-manager-restaurant-ids');
+const { createCoreController } = require("@strapi/strapi").factories;
 
-module.exports = createCoreController('api::category.category', ({ strapi }) => ({
-	async find(ctx) {
-		const { user } = ctx.state;
+module.exports = createCoreController("api::category.category", ({ strapi }) => ({
 
-		// If a manager user is present, limit categories to restaurants they manage.
-		// If no user (public client), allow fetching categories (public view).
-		let sanitizedQuery = await this.sanitizeQuery(ctx);
-		if (user) {
-			const managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
+  // Customer + Manager đều xem được category → không filter theo restaurant
+  async find(ctx) {
+    const { user } = ctx.state;
 
-			if (managedRestaurantIds.length === 0) {
-				return this.transformResponse([], { pagination: { page: 1, pageSize: 10, pageCount: 0, total: 0 } });
-			}
+    if (!user) {
+      return ctx.unauthorized("Bạn cần đăng nhập để xem danh mục.");
+    }
 
-			// If the client didn't specify restaurant filters, constrain results to managed restaurants
-			sanitizedQuery.filters = sanitizedQuery.filters ?? {};
-			if (!sanitizedQuery.filters.restaurants) {
-				sanitizedQuery.filters.restaurants = { id: { $in: managedRestaurantIds } };
-			}
-		}
+    const sanitizedQuery = await this.sanitizeQuery(ctx);
 
-		const { results, pagination } = await strapi.service('api::category.category').find(sanitizedQuery);
-		const sanitizedResults = await this.sanitizeOutput(results, ctx);
+    // Không áp dụng getManagerRestaurantIds ở categories
+    const { results, pagination } = await strapi
+      .service("api::category.category")
+      .find(sanitizedQuery);
 
-		return this.transformResponse(sanitizedResults, { pagination });
-	},
+    const sanitizedResults = await this.sanitizeOutput(results, ctx);
 
-	async findOne(ctx) {
-		const { user } = ctx.state;
+    return this.transformResponse(sanitizedResults, { pagination });
+  },
 
-		if (!user) {
-			return ctx.unauthorized('Bạn cần đăng nhập để xem danh mục.');
-		}
+  async findOne(ctx) {
+    const { user } = ctx.state;
 
-		const { id } = ctx.params;
+    if (!user) {
+      return ctx.unauthorized("Bạn cần đăng nhập để xem danh mục.");
+    }
 
-		const category = await strapi.entityService.findOne('api::category.category', id);
+    const { id } = ctx.params;
 
-		if (!category) {
-			return ctx.notFound('Không tìm thấy danh mục đã yêu cầu.');
-		}
+    const category = await strapi.entityService.findOne(
+      "api::category.category",
+      id
+    );
 
-		const sanitizedEntity = await this.sanitizeOutput(category, ctx);
-		return this.transformResponse(sanitizedEntity);
-	},
+    if (!category) {
+      return ctx.notFound("Không tìm thấy danh mục đã yêu cầu.");
+    }
+
+    const sanitizedEntity = await this.sanitizeOutput(category, ctx);
+    return this.transformResponse(sanitizedEntity);
+  },
 }));

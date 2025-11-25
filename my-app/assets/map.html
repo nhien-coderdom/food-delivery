@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Drone Native Test</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- MapLibre CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css"
+  />
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<!-- MapLibre -->
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<script>
+  // =====================
+  // LẤY ORDER ID ĐỘNG
+  // =====================
+  const ORDER_ID = new URLSearchParams(window.location.search).get("orderId");
+
+  if (!ORDER_ID) {
+    alert("❌ Thiếu orderId trong URL. Ví dụ: drone-test.html?orderId=17640...");
+    throw new Error("Missing orderId");
+  }
+
+  console.log("🚀 Testing order:", ORDER_ID);
+
+  // =====================
+  // TẠO MAP
+  // =====================
+  const map = new maplibregl.Map({
+    container: "map",
+    style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+    center: [106.7, 10.77],
+    zoom: 13,
+  });
+
+  let droneMarker = null;
+  let path = [];
+
+  // =====================
+  // CONSTANT WAREHOUSE
+  // =====================
+  const warehouse = { lat: 10.8001, lng: 106.7002 };
+
+  // =====================
+  // FETCH ORDER TO GET RESTAURANT & CUSTOMER
+  // =====================
+  const API_URL = "http://10.10.30.181:1337/api/orders/by-order-id/" + ORDER_ID;
+
+  let restaurant = null;
+  let customer = null;
+
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(json => {
+      const order = json.data;
+      if (!order) {
+        alert("❌ Order not found!");
+        return;
+      }
+
+      restaurant = order.restaurant?.location;
+      customer = order.customerLocation;
+
+      console.log("📌 Restaurant:", restaurant);
+      console.log("📌 Customer:", customer);
+
+      // Thêm các marker tĩnh vào map
+      addStaticMarkers();
+    })
+    .catch(err => console.log("❌ Fetch error:", err));
+
+
+  // =====================
+  // ADD MARKERS: warehouse, restaurant, customer
+  // =====================
+  function addStaticMarkers() {
+    // Warehouse
+    new maplibregl.Marker({ color: "blue" })
+      .setLngLat([warehouse.lng, warehouse.lat])
+      .addTo(map);
+
+    // Restaurant
+    if (restaurant) {
+      new maplibregl.Marker({ color: "green" })
+        .setLngLat([restaurant.lng, restaurant.lat])
+        .addTo(map);
+    }
+
+    // Customer
+    if (customer) {
+      new maplibregl.Marker({ color: "red" })
+        .setLngLat([customer.lng, customer.lat])
+        .addTo(map);
+    }
+  }
+
+
+  // =====================
+  // SOCKET IO
+  // =====================
+  const socket = io("http://10.10.30.181:1337", {
+    transports: ["websocket"],
+    path: "/socket.io/",
+  });
+
+  socket.on("connect", () => {
+    console.log("🟢 connected:", socket.id);
+
+    // Join đúng room backend emit
+    socket.emit("drone:join", ORDER_ID);
+  });
+
+  socket.on("connect_error", err => {
+    console.log("❌ Socket error:", err.message);
+  });
+
+  // =====================
+  // DRONE REALTIME
+  // =====================
+  socket.on("drone:position", (data) => {
+    if (String(data.orderID) !== ORDER_ID) return;
+
+    console.log("📡 drone pos:", data);
+
+    const lngLat = [data.lng, data.lat];
+    path.push(lngLat);
+
+    // Marker drone
+    if (!droneMarker) {
+      droneMarker = new maplibregl.Marker({ color: "orange" })
+        .setLngLat(lngLat)
+        .addTo(map);
+    } else {
+      droneMarker.setLngLat(lngLat);
+    }
+
+    // Camera follow
+    map.flyTo({ center: lngLat, zoom: 14 });
+
+    // Path polyline
+    const geo = {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: path },
+    };
+
+    if (map.getSource("dronePath")) {
+      map.getSource("dronePath").setData(geo);
+    } else {
+      map.addSource("dronePath", { type: "geojson", data: geo });
+      map.addLayer({
+        id: "dronePathLine",
+        type: "line",
+        source: "dronePath",
+        paint: { "line-color": "#ff6600", "line-width": 4 },
+      });
+    }
+  });
+
+  // =====================
+  // DRONE DONE
+  // =====================
+  socket.on("drone:done", data => {
+    if (String(data.orderID) !== ORDER_ID) return;
+    console.log("🏁 Drone finished");
+  });
+</script>
+
+</body>
+</html>

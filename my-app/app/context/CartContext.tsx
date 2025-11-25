@@ -277,3 +277,6 @@ export function useCart() {
   if (!ctx) throw new Error("useCart must be used inside CartProvider");
   return ctx;
 }
+
+// Default export for expo-router route handling
+export default CartProvider;

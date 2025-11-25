@@ -45,12 +45,6 @@
       "target": "api::order.order",
       "mappedBy": "restaurant"
     },
-    "cart": {
-      "type": "relation",
-      "relation": "oneToOne",
-      "target": "api::cart.cart",
-      "mappedBy": "restaurant"
-    },
     "location": {
       "type": "json"
     },

@@ -4,52 +4,33 @@
   "info": {
     "singularName": "dish",
     "pluralName": "dishes",
-    "displayName": "Dishes"
+    "displayName": "Dish"
   },
   "options": {
     "draftAndPublish": false
   },
-  "pluginOptions": {},
   "attributes": {
-    "name": {
-      "type": "string"
-    },
-    "description": {
-      "type": "text"
-    },
+    "name": { "type": "string", "required": true },
+    "description": { "type": "text" },
     "image": {
       "type": "media",
       "multiple": false,
-      "allowedTypes": [
-        "images",
-        "files",
-        "videos",
-        "audios"
-      ]
+      "allowedTypes": ["images"]
     },
-    "price": {
-      "type": "decimal"
-    },
+    "price": { "type": "decimal", "required": true },
+
     "restaurant": {
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::restaurant.restaurant",
       "inversedBy": "dishes"
     },
+
     "category": {
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::category.category",
       "inversedBy": "dishes"
-    },
-    "cart_items": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::cart-item.cart-item",
-      "mappedBy": "dishes"
-    },
-    "stock": {
-      "type": "integer"
     }
   }
 }

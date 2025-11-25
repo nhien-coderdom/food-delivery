@@ -1,97 +1,45 @@
-'use strict';
+"use strict";
 
-const TICK_MS = 800;
-
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function buildPath(from, to, steps = 80) {
-  const points = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    points.push({
-      lat: lerp(from.lat, to.lat, t),
-      lng: lerp(from.lng, to.lng, t),
-    });
-  }
-  return points;
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 module.exports = {
   async simulate(strapi, order) {
-    const depot = { lat: 10.754507, lng: 106.667766 };
+    const io = strapi.io;
+    if (!io) return;
 
-    const restaurant = await strapi.db
-      .query("api::restaurant.restaurant")
-      .findOne({
-        where: { id: order.restaurant },
-        select: ["location"],
-      });
+    const orderID = order.orderID; // 🔥 BẮT BUỘC PHẢI CÓ
 
-    const pickup = restaurant.location;
-    const drop = order.customerLocation;
+    const warehouse = { lat: 10.8001, lng: 106.7002 };
+    const restaurant = order.restaurant.location;
+    const customer = order.customerLocation;
 
-    const path = [
-      ...buildPath(depot, pickup, 40),  
-      ...buildPath(pickup, drop, 60),   
-      ...buildPath(drop, depot, 60),    
-    ];
+    const fullRoute = [warehouse, restaurant, customer, warehouse];
 
-    let i = 0;
+    console.log("🚁 Drone route for order:", orderID);
 
-    await strapi.db.query("api::order.order").update({
-      where: { id: order.id },
-      data: { statusOrder: "shipping-to-restaurant" }
-    });
+    // Gửi route tĩnh trước
+    io.to("order_" + orderID).emit("drone:route", fullRoute);
 
-    const timer = setInterval(async () => {
-      if (i >= path.length) {
-        clearInterval(timer);
+    for (let i = 0; i < fullRoute.length - 1; i++) {
+      const p1 = fullRoute[i];
+      const p2 = fullRoute[i + 1];
 
-        await strapi.db.query("api::order.order").update({
-          where: { id: order.id },
-          data: { statusOrder: "delivered" },
+      for (let step = 0; step <= 20; step++) {
+        const t = step / 20;
+        const lat = p1.lat + (p2.lat - p1.lat) * t;
+        const lng = p1.lng + (p2.lng - p1.lng) * t;
+
+        io.to("order_" + orderID).emit("drone:position", {
+          orderID,
+          lat,
+          lng,
         });
 
-        strapi.io.emit("drone:done", { orderId: order.id });
-        return;
+        await sleep(1000);
       }
+    }
 
-      const pos = path[i];
-      i++;
+    io.to("order_" + orderID).emit("drone:done", { orderID });
 
-      let phase = "";
-
-      if (i < 40) phase = "to-restaurant";
-      else if (i < 100) phase = "to-customer";
-      else phase = "returning-base";
-
-      if (i === 40) {
-        await strapi.db.query("api::order.order").update({
-          where: { id: order.id },
-          data: { statusOrder: "shipping-to-customer" }
-        });
-      }
-
-      if (i === 100) {
-        await strapi.db.query("api::order.order").update({
-          where: { id: order.id },
-          data: { statusOrder: "delivered" }
-        });
-      }
-
-      await strapi.db.query("api::order.order").update({
-        where: { id: order.id },
-        data: { drone_location: pos },
-      });
-
-      strapi.io.emit("drone:position", {
-        orderId: order.id,
-        lat: pos.lat,
-        lng: pos.lng,
-        phase,
-      });
-    }, TICK_MS);
   },
 };

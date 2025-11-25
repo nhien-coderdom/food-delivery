@@ -13,6 +13,7 @@ import { Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
 import { shadows } from "@/lib/shadowStyles";
+import { useAuth } from "@/app/context/AuthContext";
 
 interface Category {
   id: number;
@@ -47,39 +48,22 @@ export default function RestaurantList({
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  const { jwt } = useAuth();
   useEffect(() => {
     async function fetchData() {
       try {
         const res = await fetch(
-          `${API_URL}/api/restaurants?populate[image]=true&populate[dishes]=true&populate[categories]=true`
-        );
+  `${API_URL}/api/restaurants?populate[image]=true&populate[dishes]=true&populate[categories]=true`,
+  {
+    headers: {
+      Authorization: `Bearer ${jwt}`,
+    },
+  }
+);
 
         const json = await res.json();
-
-        const items = Array.isArray(json?.data) ? json.data : [];
-
-        const mapped = items.map((it: any) => {
-          const attrs = it?.attributes ?? {};
-          const imageData = attrs?.image?.data ?? attrs?.image ?? null;
-          const imageUrl = imageData?.attributes?.url ?? imageData?.url ?? null;
-
-          const categories = Array.isArray(attrs?.categories?.data)
-            ? attrs.categories.data.map((c: any) => ({ id: c.id ?? c?.attributes?.id, name: c?.attributes?.name ?? c?.name, documentId: c?.attributes?.documentId ?? c?.documentId }))
-            : Array.isArray(attrs?.categories)
-            ? attrs.categories.map((c: any) => ({ id: c.id ?? c?.attributes?.id, name: c?.attributes?.name ?? c?.name, documentId: c?.documentId ?? c?.attributes?.documentId }))
-            : [];
-
-          return {
-            id: it?.id ?? attrs?.id,
-            documentId: attrs?.documentId ?? it?.documentId,
-            name: attrs?.name ?? it?.name,
-            image: imageUrl ? { url: imageUrl } : undefined,
-            categories,
-          };
-        });
-
-        setRestaurants(mapped);
+        console.log("✅ Fetched restaurants:", json);
+        setRestaurants(Array.isArray(json.data) ? json.data : []);
       } catch (err: any) {
         console.error("❌ Error fetching restaurants:", err);
         setError(err.message);

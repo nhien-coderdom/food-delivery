@@ -87,7 +87,7 @@ export default function SignUpScreen() {
           } else {
             console.warn('⚠️ Clerk user not ready yet');
           }
-          router.replace('../tabs');
+          router.replace('./(tabs)');
         }, 1000);
       } else {
         console.error('⚠️ Verification incomplete:', signUpAttempt);

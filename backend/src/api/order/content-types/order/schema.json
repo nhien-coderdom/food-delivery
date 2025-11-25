@@ -4,7 +4,7 @@
   "info": {
     "singularName": "order",
     "pluralName": "orders",
-    "displayName": "order"
+    "displayName": "Order"
   },
   "options": {
     "draftAndPublish": true
@@ -12,7 +12,9 @@
   "pluginOptions": {},
   "attributes": {
     "orderID": {
-      "type": "uid"
+      "type": "string",
+      "required": true,
+      "unique": true
     },
     "restaurant": {
       "type": "relation",
@@ -31,10 +33,10 @@
     },
     "statusOrder": {
       "type": "enumeration",
+      "default": "pending",
       "enum": [
         "pending",
         "confirmed",
-        "preparing",
         "canceled",
         "ready",
         "delivering",
@@ -43,6 +45,7 @@
     },
     "paymentStatus": {
       "type": "enumeration",
+      "default": "unpaid",
       "enum": [
         "paid",
         "unpaid",
@@ -52,10 +55,13 @@
     "phoneNumber": {
       "type": "string"
     },
+    "deliveryAddress": {
+      "type": "string"
+    },
     "note": {
       "type": "string"
     },
-    "order_items": {
+    "items": {
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::order-item.order-item",
@@ -69,6 +75,9 @@
     },
     "customerLocation": {
       "type": "json"
+    },
+    "callbackUrl": {
+      "type": "string"
     }
   }
 }

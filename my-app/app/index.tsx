@@ -11,7 +11,6 @@ export default function Index() {
     if (!isLoaded) return;
 
     if (isSignedIn) {
-      // Đã đăng nhập → vào tab màn hình chính
       router.replace("/(tabs)");
     } else {
       // Chưa đăng nhập → vào login

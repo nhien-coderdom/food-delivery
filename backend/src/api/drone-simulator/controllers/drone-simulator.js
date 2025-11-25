@@ -1,41 +1,27 @@
+// D:\food-delivery\backend\src\api\drone-simulator\controllers\drone-simulator.js
 "use strict";
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 module.exports = {
-  async simulate(strapi, order, socketId) {
+  // POST /api/drone-simulator/simulate
+  async simulate(ctx) {
     try {
-      const io = strapi.io; // socket instance
+      const { order } = ctx.request.body;
 
-      // 📌 1. Lấy vị trí kho (gốc)
-      const warehouse = { lat: 10.8001, lng: 106.7002 };
-
-      // 📌 2. Vị trí nhà hàng
-      const restaurant = order.restaurant.location; // phải có field location
-
-      // 📌 3. Vị trí khách
-      const customer = order.customerLocation;
-
-      const route = [warehouse, restaurant, customer, warehouse];
-
-      console.log("🚁 Drone route:", route);
-
-      for (let i = 0; i < route.length; i++) {
-        const point = route[i];
-
-        // gửi từng điểm cho FE
-        io.to(socketId).emit("drone:position", {
-          lat: point.lat,
-          lng: point.lng,
-          step: i + 1,
-        });
-
-        await sleep(1500);
+      if (!order) {
+        return ctx.badRequest("Missing order object");
       }
 
-      io.to(socketId).emit("drone:done", { success: true });
+      const simulator = strapi.service("api::drone-simulator.drone-simulator");
+      if (!simulator || typeof simulator.simulate !== "function") {
+        return ctx.internalServerError("Simulator service not available");
+      }
+
+      await simulator.simulate(strapi, order);
+
+      return { message: "Drone simulation started" };
     } catch (err) {
-      console.log("Drone simulator error:", err);
+      console.error("❌ Drone simulate error:", err);
+      return ctx.internalServerError("Simulation failed");
     }
-  }
+  },
 };

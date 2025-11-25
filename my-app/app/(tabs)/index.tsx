@@ -17,9 +17,12 @@ import { useUser } from "@clerk/clerk-expo";
 import { shadows } from "@/lib/shadowStyles";
 import { API_URL } from "@/lib/apiConfig";
 import { useAddress } from "@/app/context/AddressContext";   // <-- thêm import
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function HomePage() {
   const { user } = useUser();
+  const { jwt } = useAuth();
+
   const { currentAddress, currentLocation } = useAddress();  // <-- lấy address + tọa độ
 
   const [query, setQuery] = useState("");
@@ -37,19 +40,25 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const res = await fetch(`${API_URL}/api/categories`);
+        const res = await fetch(`${API_URL}/api/categories`, {
+          headers: {
+            Authorization: `Bearer ${jwt}`,  // 🔥 BẮT BUỘC
+          },
+        });
+
+        if (!res.ok) {
+          console.log("❌ Categories API error:", await res.text());
+          return setCategories([{ id: "all", name: "All", icon: "flame" }]);
+        }
+
         const json = await res.json();
 
-        const items = Array.isArray(json?.data) ? json.data : [];
-
-        const formatted = items.map((item: any) => {
-          const attrs = item?.attributes ?? {};
-          return {
-            id: item?.id ?? attrs?.id ?? "",
-            name: attrs?.name ?? attrs?.Name ?? item?.name ?? "",
-            icon: attrs?.icon ?? "fast-food-outline",
-          };
-        });
+        const formatted = json.data.map((c: any) => ({
+          id: c.documentId,
+          name: c.Name || c.name,
+          icon: c.icon || "fast-food-outline",
+        }));
+        console.log("📦 Categories response:", json);
 
         setCategories([{ id: "all", name: "All", icon: "flame" }, ...formatted]);
       } catch (e) {
@@ -59,8 +68,8 @@ export default function HomePage() {
       }
     }
 
-    fetchCategories();
-  }, []);
+    if (jwt) fetchCategories();  // Chỉ fetch khi có JWT
+  }, [jwt]);
 
   const firstName =
     user?.firstName ||

@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337";
+const API_URL = import.meta.env.VITE_API_URL ?? "http:// 10.10.30.182:1337";
 
 export default function LoginPage({
   onSuccess,

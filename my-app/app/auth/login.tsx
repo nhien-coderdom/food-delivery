@@ -37,19 +37,14 @@ export default function SignInScreen() {
       });
 
       const data = await res.json();
-      if (data?.user?.id) {
-        console.log("✅ Synced user to Strapi:", data.user);
-
-        // 🧩 Lưu user Strapi vào context để dùng toàn app
-        await login(data.user);
-      } else {
-        console.warn("⚠️ Không nhận được user.id từ Strapi:", data);
-        Alert.alert("Lỗi", "Không thể đồng bộ tài khoản với Strapi");
-      }
-    } catch (err) {
-      console.error("❌ Sync Clerk → Strapi error:", err);
-      Alert.alert("Lỗi", "Không thể kết nối đến Strapi");
+      if (data?.jwt && data?.user) {
+      await login(data.user, data.jwt);   // ✅ FIXED
+    } else {
+      Alert.alert("Lỗi", "Strapi không trả JWT");
     }
+  } catch (err) {
+    Alert.alert("Lỗi", "Không thể kết nối đến Strapi");
+  }
   };
 
   // ⚙️ Xử lý đăng nhập
@@ -71,7 +66,7 @@ export default function SignInScreen() {
         setTimeout(async () => {
           if (clerkUser) {
             await syncWithStrapi(clerkUser);
-            router.replace("../tabs /index"); // ✅ điều hướng sau sync
+            router.replace("../(tabs )/index"); // ✅ điều hướng sau sync
           } else {
             console.warn("⚠️ Clerk user chưa load kịp");
             Alert.alert("Lỗi", "Không thể lấy thông tin người dùng.");
