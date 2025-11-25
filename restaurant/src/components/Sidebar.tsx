@@ -12,7 +12,7 @@ export default function Sidebar({ page, setPage, onLogout }: Props) {
   const idleBtn = "bg-gradient-to-b from-[#ff963a] to-[#ff6f0f] hover:brightness-105";
   const activeBtn = "bg-[#ff7b1a] shadow-[inset_0_2px_6px_rgba(0,0,0,0.2)]";
 
-  const renderButton = (label: string, key: string) => (
+  const renderButton = (label: string, key: Page) => (
     <button
       key={key}
       onClick={() => setPage(key)}

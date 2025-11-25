@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:1337";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337";
 
 type MenuManagementProps = {
   token?: string | null;
@@ -71,18 +71,42 @@ const selectControlStyle: CSSProperties = {
 const sortByName = <T extends { name: string }>(items: T[]) =>
   [...items].sort((a, b) => a.name.localeCompare(b.name, "vi", { sensitivity: "base" }));
 
-const resolveMediaUrl = (rawUrl: unknown): string | null => {
-  if (typeof rawUrl !== "string" || rawUrl.trim() === "") {
+const resolveMediaUrl = (media: unknown): string | null => {
+  if (!media) return null;
+
+  // If media is a plain string URL
+  if (typeof media === "string") {
+    const rawUrl = media.trim();
+    if (!rawUrl) return null;
+    if (/^https?:/i.test(rawUrl)) return rawUrl;
+    const normalizedApi = API_URL.replace(/\/$/, "");
+    const normalizedPath = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
+    return `${normalizedApi}${normalizedPath}`;
+  }
+
+  // If media is an object (Strapi v4 shapes)
+  try {
+    const obj: any = media as any;
+    const url = obj?.data?.attributes?.url ?? obj?.attributes?.url ?? obj?.url ?? null;
+    if (!url || typeof url !== "string") return null;
+    if (/^https?:/i.test(url)) return url;
+    const normalizedApi = API_URL.replace(/\/$/, "");
+    const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+    return `${normalizedApi}${normalizedPath}`;
+  } catch (e) {
     return null;
   }
+};
 
-  if (/^https?:/i.test(rawUrl)) {
-    return rawUrl;
+const parseJsonSafe = async (response: Response): Promise<any | null> => {
+  try {
+    const text = await response.text();
+    if (!text) return null;
+    return JSON.parse(text);
+  } catch (err) {
+    // Non-JSON response or empty body.
+    return null;
   }
-
-  const normalizedApi = API_URL.replace(/\/$/, "");
-  const normalizedPath = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
-  return `${normalizedApi}${normalizedPath}`;
 };
 
 const mapCategory = (raw: any): CategoryOption => {
@@ -177,19 +201,33 @@ const extractManagerId = (rawUser: unknown): number | string | null => {
 };
 
 export default function MenuManagement({ token: tokenProp, user: userProp }: MenuManagementProps) {
+  const safeGetLocalStorage = useMemo(() => {
+    return (key: string): string | null => {
+      try {
+        return localStorage.getItem(key);
+      } catch (err) {
+        // Tracking prevention or other browser settings can throw here.
+        // Fail gracefully and surface a warning for debugging.
+        // eslint-disable-next-line no-console
+        console.warn("localStorage unavailable for key:", key, err);
+        return null;
+      }
+    };
+  }, []);
+
   const resolvedToken = useMemo(() => {
     if (typeof tokenProp === "string") {
       return tokenProp;
     }
-    return localStorage.getItem("restaurant_admin_token");
-  }, [tokenProp]);
+    return safeGetLocalStorage("restaurant_admin_token");
+  }, [tokenProp, safeGetLocalStorage]);
 
   const resolvedUser = useMemo(() => {
     if (userProp) {
       return userProp;
     }
 
-    const storedUser = localStorage.getItem("restaurant_admin_user");
+    const storedUser = safeGetLocalStorage("restaurant_admin_user");
     if (!storedUser) {
       return null;
     }
@@ -197,10 +235,11 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
     try {
       return JSON.parse(storedUser);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.warn("Không thể parse user từ localStorage", error);
       return null;
     }
-  }, [userProp]);
+  }, [userProp, safeGetLocalStorage]);
 
   const managerId = useMemo(() => {
     return extractManagerId(resolvedUser);
@@ -217,6 +256,13 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
   const [processing, setProcessing] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [lastFailedRequest, setLastFailedRequest] = useState<{
+    url: string;
+    status: number;
+    statusText?: string | null;
+    body?: any;
+    when: string; // brief context e.g. 'fetchDishes'
+  } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -282,41 +328,22 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
     try {
       setApiError(null);
 
-      const baseUrl = `${API_URL}/api/restaurants`;
+      const url = new URL(`${API_URL}/api/restaurants`);
+      // ask Strapi to populate the image relation and request common fields
+      url.searchParams.append("populate", "image");
+      url.searchParams.append("fields[0]", "name");
+      url.searchParams.append("fields[1]", "address");
+      url.searchParams.append("fields[2]", "phone");
 
-      const buildRequest = (withManagerFilter: boolean) => {
-        const url = new URL(baseUrl);
-        url.searchParams.append("fields[0]", "name");
-        url.searchParams.append("fields[1]", "address");
-        url.searchParams.append("fields[2]", "phone");
-        if (withManagerFilter && managerId !== null) {
-          url.searchParams.append("filters[managers][id][$eq]", String(managerId));
-        }
-        return url;
-      };
-
-      const primaryResponse = await fetch(buildRequest(true).toString(), {
+      const response = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${resolvedToken}` },
       });
 
-      let data = await primaryResponse.json();
+      const data = await parseJsonSafe(response);
 
-      if (!primaryResponse.ok) {
-        throw new Error(data?.error?.message ?? "Không thể lấy thông tin nhà hàng.");
-      }
-
-      if ((!Array.isArray(data?.data) || data.data.length === 0) && managerId) {
-        const fallbackResponse = await fetch(buildRequest(false).toString(), {
-          headers: { Authorization: `Bearer ${resolvedToken}` },
-        });
-
-        const fallbackData = await fallbackResponse.json();
-
-        if (fallbackResponse.ok && Array.isArray(fallbackData?.data) && fallbackData.data.length > 0) {
-          data = fallbackData;
-        } else if (!fallbackResponse.ok) {
-          throw new Error(fallbackData?.error?.message ?? "Không thể lấy thông tin nhà hàng.");
-        }
+      if (!response.ok) {
+        setLastFailedRequest({ url: url.toString(), status: response.status, statusText: response.statusText, body: data, when: "fetchRestaurant" });
+        throw new Error(data?.error?.message ?? `Không thể lấy thông tin nhà hàng (status ${response.status}).`);
       }
 
       const restaurant = Array.isArray(data?.data) ? data.data[0] : undefined;
@@ -329,8 +356,9 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
         return;
       }
 
-      const resolvedId = Number((restaurant as any)?.id ?? (restaurant as any)?.attributes?.id ?? null);
-      setRestaurantId(Number.isFinite(resolvedId) ? resolvedId : null);
+      const attributes = (restaurant as any)?.attributes ?? restaurant ?? {};
+      const resolvedId = (restaurant as any)?.id ?? attributes?.id ?? null;
+      setRestaurantId(typeof resolvedId === "number" ? resolvedId : Number.isFinite(Number(resolvedId)) ? Number(resolvedId) : null);
     } catch (error: any) {
       setApiError(error?.message ?? "Có lỗi xảy ra khi tải thông tin nhà hàng.");
     }
@@ -359,10 +387,11 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
         headers: { Authorization: `Bearer ${resolvedToken}` },
       });
 
-      const data = await response.json();
+      const data = await parseJsonSafe(response);
 
       if (!response.ok) {
-        throw new Error(data?.error?.message ?? "Không thể tải danh mục.");
+        setLastFailedRequest({ url: url.toString(), status: response.status, statusText: response.statusText, body: data, when: "fetchCategories" });
+        throw new Error(data?.error?.message ?? data?.message ?? `Fetch categories failed ${response.status} ${response.statusText}`);
       }
 
       const parsed = Array.isArray(data?.data) ? data.data.map(mapCategory) : [];
@@ -380,6 +409,11 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
 
       try {
         setListLoading(true);
+        // Guard against invalid restaurant ids (could be undefined or NaN)
+        if (!Number.isFinite(targetRestaurantId)) {
+          setDishes([]);
+          return;
+        }
 
         const url = new URL(`${API_URL}/api/dishes`);
         url.searchParams.append("filters[restaurant][id][$eq]", String(targetRestaurantId));
@@ -391,10 +425,11 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
           headers: { Authorization: `Bearer ${resolvedToken}` },
         });
 
-        const data = await response.json();
+        const data = await parseJsonSafe(response);
 
         if (!response.ok) {
-          throw new Error(data?.error?.message ?? "Không thể tải món ăn.");
+          setLastFailedRequest({ url: url.toString(), status: response.status, statusText: response.statusText, body: data, when: "fetchDishes" });
+          throw new Error(data?.error?.message ?? data?.message ?? `Fetch dishes failed ${response.status} ${response.statusText}`);
         }
 
         const parsed = Array.isArray(data?.data) ? data.data.map(mapDish) : [];
@@ -407,6 +442,28 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
     },
     [resolvedToken]
   );
+
+  const fetchDishDetails = useCallback(async (id: number) => {
+    if (!resolvedToken) throw new Error("Missing token for fetching dish details");
+    const url = new URL(`${API_URL}/api/dishes/${id}`);
+    // populate image and category fields for full detail
+    url.searchParams.append("populate[image]", "true");
+    url.searchParams.append("populate[category][fields][0]", "name");
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${resolvedToken}` },
+    });
+
+    const data = await parseJsonSafe(response);
+    if (!response.ok) {
+      setLastFailedRequest({ url: url.toString(), status: response.status, statusText: response.statusText, body: data, when: "fetchDishDetails" });
+      throw new Error(data?.error?.message ?? data?.message ?? `Fetch dish ${id} failed ${response.status}`);
+    }
+
+    const raw = data?.data ?? null;
+    if (!raw) return null;
+    return mapDish(raw);
+  }, [resolvedToken]);
 
   useEffect(() => {
     fetchRestaurant();
@@ -479,27 +536,54 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
     }
   }, [releaseImagePreview]);
 
-  const handleEditDish = useCallback((dish: Dish) => {
+  const handleEditDish = useCallback(async (dish: Dish) => {
+    // Edit flow initiated
+
     setFormMode("edit");
     setActiveDishId(dish.id);
     setFormErrors([]);
-    setFormState({
-      name: dish.name,
-      description: dish.description,
-      price: dish.price ? String(dish.price) : "",
-      stock: dish.stock || dish.stock === 0 ? String(dish.stock) : "",
-      categoryId: dish.category ? String(dish.category.id) : "",
-    });
     releaseImagePreview();
     setImageFile(null);
-    setExistingImageId(dish.image ? dish.image.id : null);
-    setExistingImageUrl(dish.image ? dish.image.url : null);
     setImagePreview(null);
     setRemoveImage(false);
+
+    // Try to fetch latest dish details from server (includes populated relations)
+    try {
+      const fresh = await fetchDishDetails(dish.id);
+      // fetched dish details
+      const source = fresh ?? dish;
+
+      setFormState({
+        name: source.name,
+        description: source.description,
+        price: source.price ? String(source.price) : "",
+        stock: source.stock || source.stock === 0 ? String(source.stock) : "",
+        categoryId: source.category ? String(source.category.id) : "",
+      });
+
+      setExistingImageId(source.image ? source.image.id : null);
+      setExistingImageUrl(source.image ? source.image.url : null);
+
+      // form state populated for edit
+    } catch (err: any) {
+      // If fetching detail fails, fall back to provided dish object
+      // eslint-disable-next-line no-console
+      console.warn('fetchDishDetails failed, falling back to provided dish', err);
+      setFormState({
+        name: dish.name,
+        description: dish.description,
+        price: dish.price ? String(dish.price) : "",
+        stock: dish.stock || dish.stock === 0 ? String(dish.stock) : "",
+        categoryId: dish.category ? String(dish.category.id) : "",
+      });
+      setExistingImageId(dish.image ? dish.image.id : null);
+      setExistingImageUrl(dish.image ? dish.image.url : null);
+    }
+
     if (imageInputRef.current) {
       imageInputRef.current.value = "";
     }
-  }, [releaseImagePreview]);
+  }, [releaseImagePreview, fetchDishDetails]);
 
   const handleDeleteDish = useCallback(
     async (id: number) => {
@@ -524,9 +608,10 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
           },
         });
 
-        const result = await response.json();
+        const result = await parseJsonSafe(response);
         if (!response.ok) {
-          throw new Error(result?.error?.message ?? "Không thể xoá món ăn.");
+          setLastFailedRequest({ url: `${API_URL}/api/dishes/${id}`, status: response.status, statusText: response.statusText, body: result, when: "deleteDish" });
+          throw new Error(result?.error?.message ?? result?.message ?? `Delete failed ${response.status} ${response.statusText}`);
         }
 
         setDishes((prev) => prev.filter((dish) => dish.id !== id));
@@ -606,40 +691,163 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
       const editingDishId = formMode === "edit" && activeDishId !== null ? activeDishId : null;
       const isEditing = editingDishId !== null;
 
+      // Verify the dish exists on server before attempting update (avoids 404 due to missing resource or permission)
+      if (isEditing) {
+        try {
+          const exists = await fetchDishDetails(editingDishId as number);
+          if (!exists) {
+            setApiError("Món ăn không tồn tại hoặc bạn không có quyền sửa.");
+            setProcessing(false);
+            return;
+          }
+        } catch (err: any) {
+          setApiError(err?.message ?? "Lỗi khi xác thực món ăn trên server.");
+          setProcessing(false);
+          return;
+        }
+      }
+
+      // Prepare optimistic update snapshot for rollback
+      const previousDishes = dishes;
+
+      if (isEditing) {
+        const optimisticDish: Dish = {
+          id: editingDishId as number,
+          name: trimmedName,
+          description: trimmedDescription,
+          price: priceValue,
+          stock: stockValue,
+          image: imagePreview ? { id: existingImageId ?? 0, url: imagePreview } : existingImageUrl ? { id: existingImageId ?? 0, url: existingImageUrl } : null,
+          category: formState.categoryId ? { id: Number(formState.categoryId), name: categories.find((c) => String(c.id) === String(formState.categoryId))?.name ?? "" } : null,
+        };
+
+        setDishes((prev) => sortByName(prev.map((d) => (d.id === optimisticDish.id ? optimisticDish : d))));
+      } else {
+        // create optimistic new entry with temporary negative id
+        const tempId = -Date.now();
+        const optimisticNew: Dish = {
+          id: tempId,
+          name: trimmedName,
+          description: trimmedDescription,
+          price: priceValue,
+          stock: stockValue,
+          image: imagePreview ? { id: 0, url: imagePreview } : null,
+          category: formState.categoryId ? { id: Number(formState.categoryId), name: categories.find((c) => String(c.id) === String(formState.categoryId))?.name ?? "" } : null,
+        };
+
+        setDishes((prev) => sortByName([...prev, optimisticNew]));
+      }
+
       let body: BodyInit;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${resolvedToken}`,
       };
 
+      // If there's a new image file, upload it first and attach the returned media id
       if (imageFile) {
-        const formData = new FormData();
-        formData.append("data", JSON.stringify(dataPayload));
-        formData.append("files.image", imageFile);
-        body = formData;
-      } else {
-        headers["Content-Type"] = "application/json";
-        body = JSON.stringify({ data: dataPayload });
+        try {
+          const uploadForm = new FormData();
+          uploadForm.append("files.image", imageFile);
+
+          const uploadResp = await fetch(`${API_URL}/api/upload`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${resolvedToken}` },
+            body: uploadForm,
+          });
+
+          const uploadResult = await parseJsonSafe(uploadResp);
+          if (!uploadResp.ok) {
+            setLastFailedRequest({ url: `${API_URL}/api/upload`, status: uploadResp.status, statusText: uploadResp.statusText, body: uploadResult, when: "uploadImage" });
+            throw new Error(uploadResult?.error?.message ?? uploadResult?.message ?? `Image upload failed ${uploadResp.status} ${uploadResp.statusText}`);
+          }
+
+          const uploaded = Array.isArray(uploadResult?.data) ? uploadResult.data[0] : uploadResult?.data ?? uploadResult;
+          const mediaId = uploaded?.id ?? null;
+          if (!mediaId) {
+            throw new Error("Không nhận được id ảnh sau khi tải lên.");
+          }
+
+          dataPayload.image = mediaId;
+        } catch (err: any) {
+          // rollback optimistic update
+          setDishes(previousDishes);
+          setApiError(err?.message ?? "Lỗi khi tải ảnh lên.");
+          setProcessing(false);
+          return;
+        }
       }
 
+      // Send JSON payload for create/update
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify({ data: dataPayload });
+
       try {
-        const response = await fetch(
-          isEditing ? `${API_URL}/api/dishes/${editingDishId}` : `${API_URL}/api/dishes`,
-          {
-            method: isEditing ? "PUT" : "POST",
+        const urlStr = isEditing ? `${API_URL}/api/dishes/${editingDishId}` : `${API_URL}/api/dishes`;
+
+        const primaryMethod = isEditing ? "PATCH" : "POST";
+        const fallbackMethod = isEditing ? "PUT" : null;
+
+        let response = await fetch(urlStr, {
+          method: primaryMethod,
+          headers,
+          body,
+        });
+
+        let result = await parseJsonSafe(response);
+
+        if (isEditing && (response.status === 405 || response.status === 404) && fallbackMethod) {
+          // eslint-disable-next-line no-console
+          console.warn(`Primary ${primaryMethod} returned ${response.status}; retrying with ${fallbackMethod}`);
+          response = await fetch(urlStr, {
+            method: fallbackMethod,
             headers,
             body,
-          }
-        );
-
-        const result = await response.json();
-        if (!response.ok) {
-          throw new Error(result?.error?.message ?? "Không thể lưu món ăn.");
+          });
+          result = await parseJsonSafe(response);
         }
 
-        await fetchDishes(restaurantId);
+        if (isEditing && response.status === 405) {
+          // eslint-disable-next-line no-console
+          console.warn("Retrying with POST + X-HTTP-Method-Override: PATCH");
+          const overrideHeaders = { ...headers, 'X-HTTP-Method-Override': 'PATCH' } as Record<string, string>;
+          if ((body as any) instanceof FormData) {
+            delete overrideHeaders['Content-Type'];
+          }
+          response = await fetch(urlStr, {
+            method: 'POST',
+            headers: overrideHeaders,
+            body,
+          });
+          result = await parseJsonSafe(response);
+        }
+
+        if (!response.ok) {
+          setLastFailedRequest({ url: urlStr, status: response.status, statusText: response.statusText, body: result, when: isEditing ? "updateDish" : "createDish" });
+          throw new Error(result?.error?.message ?? result?.message ?? `Save failed ${response.status} ${response.statusText}`);
+        }
+
+        const savedRaw = result?.data ?? result;
+        const savedDish = savedRaw ? mapDish(savedRaw) : null;
+
+        if (savedDish) {
+          setDishes((prev) => {
+            if (isEditing) {
+              // replace by server copy (id should match)
+              return sortByName(prev.map((d) => (d.id === savedDish.id ? savedDish : d)));
+            }
+            // for create: replace temporary id entry with savedDish if exists
+            return sortByName(prev.map((d) => (d.id < 0 && d.name === savedDish.name ? savedDish : d)));
+          });
+        } else {
+          // fallback: refresh list
+          await fetchDishes(restaurantId);
+        }
+
         showFeedback(isEditing ? "Đã cập nhật món ăn." : "Đã thêm món ăn mới.");
         resetForm();
       } catch (error: any) {
+        // rollback optimistic update
+        setDishes(previousDishes);
         setApiError(error?.message ?? "Có lỗi xảy ra khi lưu món ăn.");
       } finally {
         setProcessing(false);
@@ -702,6 +910,7 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
           🍽️ Quản lý menu
         </h2>
         <p style={{ color: "#6b7280" }}>Thêm, chỉnh sửa món ăn trong thực đơn của nhà hàng.</p>
+        
       </div>
 
       {apiError && (
@@ -1053,6 +1262,14 @@ export default function MenuManagement({ token: tokenProp, user: userProp }: Men
           )}
         </div>
       </div>
+      {lastFailedRequest && (
+        <div style={{ marginTop: 16, padding: 12, background: "#fff7ed", border: "1px solid #ffd6b3", borderRadius: 8 }}>
+          <div style={{ fontWeight: 700, color: "#b45309", marginBottom: 8 }}>Debug: Last failed request ({lastFailedRequest.when})</div>
+          <div style={{ fontSize: 13, color: "#374151", marginBottom: 4 }}><strong>URL:</strong> {lastFailedRequest.url}</div>
+          <div style={{ fontSize: 13, color: "#374151", marginBottom: 8 }}><strong>Status:</strong> {lastFailedRequest.status} {lastFailedRequest.statusText ?? ""}</div>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, color: "#111827", margin: 0 }}>{typeof lastFailedRequest.body === 'string' ? lastFailedRequest.body : JSON.stringify(lastFailedRequest.body, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }
