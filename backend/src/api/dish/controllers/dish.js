@@ -140,6 +140,16 @@ module.exports = createCoreController('api::dish.dish', ({ strapi }) => ({
 			populate: { restaurant: true },
 		});
 
+		// DEBUG: log permissions/context to diagnose 404 on update
+		try {
+			console.debug('[DEBUG] dish.update - user.id:', user?.id);
+			console.debug('[DEBUG] dish.update - id param:', id);
+			console.debug('[DEBUG] dish.update - managedRestaurantIds:', JSON.stringify(managedRestaurantIds));
+			console.debug('[DEBUG] dish.update - existing lookup result:', JSON.stringify(existing));
+		} catch (e) {
+			console.debug('[DEBUG] dish.update - debug stringify failed', e && e.message);
+		}
+
 		if (!existing) {
 			return ctx.notFound('Không tìm thấy món ăn cần cập nhật.');
 		}
@@ -150,6 +160,14 @@ module.exports = createCoreController('api::dish.dish', ({ strapi }) => ({
 		}
 
 		const incomingData = ctx.request?.body?.data ?? {};
+
+		// DEBUG: log incoming request body and computed data for troubleshooting
+		try {
+			console.debug('[DEBUG] dish.update - ctx.request.body:', JSON.stringify(ctx.request?.body));
+			console.debug('[DEBUG] dish.update - incomingData:', JSON.stringify(incomingData));
+		} catch (e) {
+			console.debug('[DEBUG] dish.update - could not stringify request body', e && e.message);
+		}
 		const targetRestaurantId = incomingData?.restaurant ?? restaurantId;
 
 		if (!managedRestaurantIds.includes(targetRestaurantId)) {
@@ -164,7 +182,44 @@ module.exports = createCoreController('api::dish.dish', ({ strapi }) => ({
 			},
 		};
 
-		return super.update(ctx);
+		try {
+			return await super.update(ctx);
+		} catch (err) {
+			// Log full error to help trace 404/NotFoundError origins
+			try {
+				console.error('[ERROR] dish.update - super.update failed', err && err.stack ? err.stack : err);
+			} catch (e) {
+				console.error('[ERROR] dish.update - failed to stringify error', e && e.message);
+			}
+
+			// Fallback: if core update threw NotFound (possibly due to internal ownership/filters),
+			// we've already validated ownership above; attempt a direct entityService.update as a safe workaround.
+			const isNotFound = err && (err.status === 404 || err.statusCode === 404 || err.name === 'NotFoundError');
+			if (isNotFound) {
+				try {
+					console.warn('[WARN] dish.update - fallback to entityService.update for id:', id);
+					const updateOptions = { data: ctx.request.body.data };
+					// Preserve populate query if present so response shape remains consistent
+					if (ctx.query && ctx.query.populate) {
+						updateOptions.populate = ctx.query.populate;
+					}
+
+					const updated = await strapi.entityService.update('api::dish.dish', id, updateOptions);
+					const sanitized = await this.sanitizeOutput(updated, ctx);
+					return this.transformResponse(sanitized);
+				} catch (e2) {
+					try {
+						console.error('[ERROR] dish.update - fallback entityService.update failed', e2 && e2.stack ? e2.stack : e2);
+					} catch (e3) {
+						console.error('[ERROR] dish.update - failed to stringify fallback error', e3 && e3.message);
+					}
+					// If fallback fails, rethrow original error to preserve original semantics
+					throw err;
+				}
+			}
+
+			throw err;
+		}
 	},
 
 	async delete(ctx) {

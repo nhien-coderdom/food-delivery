@@ -1,115 +1,145 @@
 'use strict';
 
-/**
- * restaurant controller
- */
-
 const { createCoreController } = require('@strapi/strapi').factories;
 const getManagerRestaurantIds = require('../../../utils/get-manager-restaurant-ids');
 
 module.exports = createCoreController('api::restaurant.restaurant', ({ strapi }) => ({
-	async find(ctx) {
-		const { user } = ctx.state;
 
-		if (!user) {
-			return ctx.unauthorized('Bạn cần đăng nhập để xem thông tin nhà hàng.');
-		}
+  // ==========================================================
+  // LIST RESTAURANTS
+  // ==========================================================
+  async find(ctx) {
+    const { user } = ctx.state;
 
-		const managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
-		console.log('🔍 User ID:', user.id);
-		console.log('🔍 Managed restaurant IDs:', managedRestaurantIds);
+    const sanitizedQuery = await this.sanitizeQuery(ctx);
+    sanitizedQuery.filters = sanitizedQuery.filters ?? {};
 
-		const sanitizedQuery = await this.sanitizeQuery(ctx);
-		sanitizedQuery.filters = sanitizedQuery.filters ?? {};
-		
-		// Remove any manager/managers filter that might cause "Invalid key" error
-		if (sanitizedQuery.filters.manager) {
-			delete sanitizedQuery.filters.manager;
-		}
-		if (sanitizedQuery.filters.managers) {
-			delete sanitizedQuery.filters.managers;
-		}
-		if (sanitizedQuery.filters.managers) {
-			delete sanitizedQuery.filters.managers;
-		}
+    // Nếu có user đăng nhập → check vai trò
+    if (user) {
+      const role = user.role?.name;
 
-		if (managedRestaurantIds.length > 0) {
-			sanitizedQuery.filters.id = {
-				...(sanitizedQuery.filters.id ?? {}),
-				$in: managedRestaurantIds,
-			};
-		} else {
-			sanitizedQuery.filters.id = { $in: [] };
-		}
+      // ===============================================
+      // Manager -> Chỉ xem nhà hàng của mình
+      // ===============================================
+      if (role === "manager") {
+        const managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
 
-		const { results, pagination } = await strapi
-			.service('api::restaurant.restaurant')
-			.find(sanitizedQuery);
+        if (managedRestaurantIds.length === 0) {
+          // Manager nhưng không có nhà hàng
+          sanitizedQuery.filters.id = { $in: [] };
+        } else {
+          sanitizedQuery.filters.id = {
+            ...(sanitizedQuery.filters.id ?? {}),
+            $in: managedRestaurantIds,
+          };
+        }
+      }
 
-		const sanitizedResults = await this.sanitizeOutput(results, ctx);
-		return this.transformResponse(sanitizedResults, { pagination });
-	},
+      // ===============================================
+      // Admin -> thấy tất cả
+      // ===============================================
+      else if (role === "admin") {
+        // không cần lọc
+      }
 
-	async findOne(ctx) {
-		const { user } = ctx.state;
+      // ===============================================
+      // Customer -> được xem toàn bộ để đặt hàng
+      // ===============================================
+      else if (role === "customer") {
+        // để nguyên danh sách, khách xem đầy đủ
+      }
+    }
 
-		if (!user) {
-			return ctx.unauthorized('Bạn cần đăng nhập để xem thông tin nhà hàng.');
-		}
+    // Nếu không đăng nhập -> public xem toàn bộ
+    const { results, pagination } = await strapi
+      .service('api::restaurant.restaurant')
+      .find(sanitizedQuery);
 
-		const { id } = ctx.params;
+    const sanitizedResults = await this.sanitizeOutput(results, ctx);
+    return this.transformResponse(sanitizedResults, { pagination });
+  },
 
-		const restaurant = await strapi.entityService.findOne('api::restaurant.restaurant', id, {
-			populate: { manager: true },
-		});
+  // ==========================================================
+  // VIEW ONE RESTAURANT
+  // ==========================================================
+  async findOne(ctx) {
+    const { user } = ctx.state;
+    const { id } = ctx.params;
 
-		if (!restaurant || restaurant.manager?.id !== user.id) {
-			return ctx.forbidden('Bạn không có quyền truy cập nhà hàng này.');
-		}
+    const restaurant = await strapi.entityService.findOne(
+      'api::restaurant.restaurant',
+      id,
+      { populate: { manager: true } }
+    );
 
-		const sanitizedEntity = await this.sanitizeOutput(restaurant, ctx);
-		return this.transformResponse(sanitizedEntity);
-	},
+    if (!restaurant) {
+      return ctx.notFound('Không tìm thấy nhà hàng.');
+    }
 
-	async update(ctx) {
-		const { user } = ctx.state;
+    // Nếu là manager → chỉ được xem nhà hàng của họ
+    if (user && user.role?.name === "manager") {
+      if (restaurant.manager?.id !== user.id) {
+        return ctx.forbidden('Bạn không có quyền xem nhà hàng này.');
+      }
+    }
 
-		if (!user) {
-			return ctx.unauthorized('Bạn cần đăng nhập để chỉnh sửa nhà hàng.');
-		}
+    // Customer & public -> được xem tự nhiên
+    const sanitized = await this.sanitizeOutput(restaurant, ctx);
+    return this.transformResponse(sanitized);
+  },
 
-		const { id } = ctx.params;
+  // ==========================================================
+  // UPDATE RESTAURANT (manager only)
+  // ==========================================================
+  async update(ctx) {
+    const { user } = ctx.state;
+    const { id } = ctx.params;
 
-		const restaurant = await strapi.entityService.findOne('api::restaurant.restaurant', id, {
-			populate: { manager: true },
-		});
+    if (!user) {
+      return ctx.unauthorized('Bạn cần đăng nhập.');
+    }
 
-		if (!restaurant) {
-			return ctx.notFound('Không tìm thấy nhà hàng cần cập nhật.');
-		}
+    const role = user.role?.name;
 
-		if (restaurant.manager?.id !== user.id) {
-			return ctx.forbidden('Bạn không có quyền chỉnh sửa nhà hàng này.');
-		}
+    // Customer không thể chỉnh sửa
+    if (role === "customer") {
+      return ctx.forbidden('Khách hàng không có quyền cập nhật nhà hàng.');
+    }
 
-		const submittedData = ctx.request?.body?.data ?? {};
-		const normalizedData =
-			typeof submittedData === 'object' && submittedData !== null ? submittedData : {};
-		const allowedFields = ['name', 'address', 'phone'];
+    const restaurant = await strapi.entityService.findOne(
+      'api::restaurant.restaurant',
+      id,
+      { populate: { manager: true } }
+    );
 
-		const filteredData = Object.fromEntries(
-			Object.entries(normalizedData).filter(([key]) => allowedFields.includes(key))
-		);
+    if (!restaurant) {
+      return ctx.notFound('Không tìm thấy nhà hàng.');
+    }
 
-		if (Object.keys(filteredData).length === 0) {
-			return ctx.badRequest('Không có dữ liệu hợp lệ để cập nhật.');
-		}
+    // Manager -> chỉ sửa nhà hàng của mình
+    if (role === "manager" && restaurant.manager?.id !== user.id) {
+      return ctx.forbidden('Bạn không có quyền chỉnh sửa nhà hàng này.');
+    }
 
-		const updatedEntity = await strapi.entityService.update('api::restaurant.restaurant', id, {
-			data: filteredData,
-		});
+    const submittedData = ctx.request?.body?.data ?? {};
+    const allowedFields = ['name', 'address', 'phone'];
 
-		const sanitizedEntity = await this.sanitizeOutput(updatedEntity, ctx);
-		return this.transformResponse(sanitizedEntity);
-	},
+    const filteredData = Object.fromEntries(
+      Object.entries(submittedData).filter(([key]) => allowedFields.includes(key))
+    );
+
+    if (Object.keys(filteredData).length === 0) {
+      return ctx.badRequest('Không có dữ liệu hợp lệ để cập nhật.');
+    }
+
+    const updated = await strapi.entityService.update(
+      'api::restaurant.restaurant',
+      id,
+      { data: filteredData }
+    );
+
+    const sanitized = await this.sanitizeOutput(updated, ctx);
+    return this.transformResponse(sanitized);
+  },
+
 }));

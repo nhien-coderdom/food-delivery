@@ -7,7 +7,7 @@ module.exports = [
       contentSecurityPolicy: {
         useDefaults: true,
         directives: {
-          'connect-src': ["'self'", 'https://localhost:1337 ', 'http://192.168.87.124:1337'],
+          'connect-src': ["'self'", 'https://localhost:1337 ', 'http://10.10.30.182:1337'],
           'img-src': [
             "'self'",
             'data:',
@@ -32,8 +32,19 @@ module.exports = [
     config: {
       enabled: true,
       origin: '*', // Cho phép tất cả các origin (development mode)
-      credentials: true,
-      headers: '*',
+      // Không bật credentials khi origin = '*' vì trình duyệt sẽ chặn
+      // Access-Control-Allow-Origin: '*' kết hợp với Access-Control-Allow-Credentials: true
+      credentials: false,
+      // Chỉ định rõ các header client có thể gửi trong preflight
+      // Thêm 'X-HTTP-Method-Override' để hỗ trợ fallback khi server chặn PUT/PATCH
+      headers: [
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-HTTP-Method-Override",
+      ],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
     },
   },

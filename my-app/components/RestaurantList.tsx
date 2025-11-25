@@ -56,8 +56,30 @@ export default function RestaurantList({
         );
 
         const json = await res.json();
-        
-        setRestaurants(Array.isArray(json.data) ? json.data : []);
+
+        const items = Array.isArray(json?.data) ? json.data : [];
+
+        const mapped = items.map((it: any) => {
+          const attrs = it?.attributes ?? {};
+          const imageData = attrs?.image?.data ?? attrs?.image ?? null;
+          const imageUrl = imageData?.attributes?.url ?? imageData?.url ?? null;
+
+          const categories = Array.isArray(attrs?.categories?.data)
+            ? attrs.categories.data.map((c: any) => ({ id: c.id ?? c?.attributes?.id, name: c?.attributes?.name ?? c?.name, documentId: c?.attributes?.documentId ?? c?.documentId }))
+            : Array.isArray(attrs?.categories)
+            ? attrs.categories.map((c: any) => ({ id: c.id ?? c?.attributes?.id, name: c?.attributes?.name ?? c?.name, documentId: c?.documentId ?? c?.attributes?.documentId }))
+            : [];
+
+          return {
+            id: it?.id ?? attrs?.id,
+            documentId: attrs?.documentId ?? it?.documentId,
+            name: attrs?.name ?? it?.name,
+            image: imageUrl ? { url: imageUrl } : undefined,
+            categories,
+          };
+        });
+
+        setRestaurants(mapped);
       } catch (err: any) {
         console.error("❌ Error fetching restaurants:", err);
         setError(err.message);
@@ -120,7 +142,11 @@ export default function RestaurantList({
   return (
     <View style={styles.container}>
       {filtered.map((res) => {
-        const imgUrl = getImageUrl(res?.image?.url);
+      const imgUrl = getImageUrl(res?.image?.url);
+      // Debug: log constructed image URL to help diagnose web/image host issues
+      // Remove this once image loading is confirmed
+      // eslint-disable-next-line no-console
+      console.debug('[RestaurantList] imgUrl for', res.name, ':', imgUrl);
         const rating = (4 + Math.random() * 0.7).toFixed(1);
         const delivery = Math.floor(Math.random() * 20) + 15;
 

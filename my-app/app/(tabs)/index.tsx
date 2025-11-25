@@ -40,11 +40,16 @@ export default function HomePage() {
         const res = await fetch(`${API_URL}/api/categories`);
         const json = await res.json();
 
-        const formatted = json.data.map((c: any) => ({
-          id: c.documentId,
-          name: c.Name || c.name,
-          icon: c.icon || "fast-food-outline",
-        }));
+        const items = Array.isArray(json?.data) ? json.data : [];
+
+        const formatted = items.map((item: any) => {
+          const attrs = item?.attributes ?? {};
+          return {
+            id: item?.id ?? attrs?.id ?? "",
+            name: attrs?.name ?? attrs?.Name ?? item?.name ?? "",
+            icon: attrs?.icon ?? "fast-food-outline",
+          };
+        });
 
         setCategories([{ id: "all", name: "All", icon: "flame" }, ...formatted]);
       } catch (e) {
@@ -109,7 +114,7 @@ export default function HomePage() {
 
         <View style={styles.categoriesHeader}>
           <Text style={styles.sectionTitle}>All Categories</Text>
-          <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
+          <Pressable><Text style={styles.seeAll}></Text></Pressable>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
@@ -146,7 +151,7 @@ export default function HomePage() {
 
       <View style={styles.restaurantsHeader}>
         <Text style={styles.sectionTitle}>Open Restaurants</Text>
-        <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
+        <Pressable><Text style={styles.seeAll}></Text></Pressable>
       </View>
 
       <RestaurantList query={query} category={selectedCategory} />

@@ -8,16 +8,16 @@ export default function Index() {
   const { isLoaded, isSignedIn } = useUser();
 
   useEffect(() => {
-    if (!isLoaded) return; // Đợi Clerk load xong
+    if (!isLoaded) return;
 
-    // Nếu đã đăng nhập => vào home
     if (isSignedIn) {
-      router.replace("./(tabs) ");
+      // Đã đăng nhập → vào tab màn hình chính
+      router.replace("/(tabs)");
     } else {
-      // Nếu chưa đăng nhập => hiện login
+      // Chưa đăng nhập → vào login
       router.replace("/auth/login");
     }
-  }, [isLoaded, isSignedIn, router]);
+  }, [isLoaded, isSignedIn]);
 
   return (
     <View style={styles.container}>

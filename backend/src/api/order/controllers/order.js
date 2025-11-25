@@ -16,7 +16,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
         restaurant: true,
         users_permissions_user: true,
         order_items: {
-          populate: ["dish"],   // ✔ CHỈNH ĐÚNG THEO schema order-item
+          populate: ["dish"],
         },
       },
       limit: 1,
@@ -38,7 +38,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       filters: { users_permissions_user: user.id },
       populate: {
         restaurant: true,
-        order_items: { populate: ["dish"] },  // ✔
+        order_items: { populate: ["dish"] },
       },
       sort: { createdAt: "DESC" },
     });
@@ -110,15 +110,76 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   // ==================================================
   async managerUpdate(ctx) {
     const id = ctx.params.id;
-    const data = ctx.request.body;
+
+    const incoming = ctx.request?.body?.data ?? ctx.request?.body ?? {};
+
+    const allowed = {};
+
+    if (typeof incoming.statusOrder !== "undefined") {
+      allowed.statusOrder = incoming.statusOrder;
+    }
+
+    if (typeof incoming.note !== "undefined") {
+      allowed.note = incoming.note;
+    }
+
+    if (typeof incoming.paymentStatus !== "undefined") {
+      console.warn(
+        `[WARN] Ignoring paymentStatus update attempt by manager for Order ${id}`
+      );
+    }
 
     const updated = await strapi.entityService.update("api::order.order", id, {
-      data,
+      data: allowed,
     });
 
-    if (data.statusOrder === "confirmed") {
-      const droneSimulator = require("../../drone-simulator/services/drone-simulator");
-      droneSimulator.simulate(strapi, updated);
+    // Nếu đơn được confirm => mô phỏng drone
+    if (allowed.statusOrder === "confirmed") {
+      try {
+        const droneSimulator = require("../../drone-simulator/services/drone-simulator");
+        droneSimulator.simulate(strapi, updated);
+      } catch (err) {
+        console.error("Drone simulator error:", err);
+      }
+    }
+
+    return { data: updated };
+  },
+
+  // ==================================================
+  // Khách xác nhận đơn đã nhận hàng
+  // ==================================================
+  async customerConfirm(ctx) {
+    const { user } = ctx.state;
+    if (!user) return ctx.unauthorized("Bạn cần đăng nhập");
+
+    const id = ctx.params.id;
+
+    const order = await strapi.entityService.findOne("api::order.order", id, {
+      populate: { users_permissions_user: true },
+    });
+
+    if (!order) return ctx.notFound("Order not found");
+
+    if (order.users_permissions_user.id !== user.id) {
+      return ctx.unauthorized("Bạn không sở hữu đơn hàng này");
+    }
+
+    // Cập nhật trạng thái
+    const updated = await strapi.entityService.update(
+      "api::order.order",
+      id,
+      {
+        data: { statusOrder: "delivered" },
+      }
+    );
+
+    // Emit socket realtime
+    if (strapi.io) {
+      strapi.io.emit("orderDelivered", {
+        orderId: updated.id,
+        status: "delivered",
+      });
     }
 
     return { data: updated };

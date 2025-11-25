@@ -11,17 +11,22 @@ module.exports = createCoreController('api::category.category', ({ strapi }) => 
 	async find(ctx) {
 		const { user } = ctx.state;
 
-		if (!user) {
-			return ctx.unauthorized('Bạn cần đăng nhập để xem danh mục.');
+		// If a manager user is present, limit categories to restaurants they manage.
+		// If no user (public client), allow fetching categories (public view).
+		let sanitizedQuery = await this.sanitizeQuery(ctx);
+		if (user) {
+			const managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
+
+			if (managedRestaurantIds.length === 0) {
+				return this.transformResponse([], { pagination: { page: 1, pageSize: 10, pageCount: 0, total: 0 } });
+			}
+
+			// If the client didn't specify restaurant filters, constrain results to managed restaurants
+			sanitizedQuery.filters = sanitizedQuery.filters ?? {};
+			if (!sanitizedQuery.filters.restaurants) {
+				sanitizedQuery.filters.restaurants = { id: { $in: managedRestaurantIds } };
+			}
 		}
-
-		const managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
-
-		if (managedRestaurantIds.length === 0) {
-			return this.transformResponse([], { pagination: { page: 1, pageSize: 10, pageCount: 0, total: 0 } });
-		}
-
-		const sanitizedQuery = await this.sanitizeQuery(ctx);
 
 		const { results, pagination } = await strapi.service('api::category.category').find(sanitizedQuery);
 		const sanitizedResults = await this.sanitizeOutput(results, ctx);
