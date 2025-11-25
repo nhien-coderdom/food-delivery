@@ -105,7 +105,7 @@ module.exports = {
               quantity: item.quantity,
               notes: item.notes || "",
               publishedAt: new Date(),
-            },
+},
           });
         }
       }
@@ -199,8 +199,7 @@ module.exports = {
 
       const FRONTEND_WEB = process.env.FRONTEND_WEB_URL;
       const FRONTEND_APP = callback || process.env.FRONTEND_APP_URL;
-
-      // ============================
+// ============================
       // PAYMENT SUCCESS
       // ============================
       if (query.vnp_ResponseCode === "00") {

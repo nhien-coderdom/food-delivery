@@ -126,7 +126,11 @@ export default function RestaurantList({
   return (
     <View style={styles.container}>
       {filtered.map((res) => {
-        const imgUrl = getImageUrl(res?.image?.url);
+      const imgUrl = getImageUrl(res?.image?.url);
+      // Debug: log constructed image URL to help diagnose web/image host issues
+      // Remove this once image loading is confirmed
+      // eslint-disable-next-line no-console
+      console.debug('[RestaurantList] imgUrl for', res.name, ':', imgUrl);
         const rating = (4 + Math.random() * 0.7).toFixed(1);
         const delivery = Math.floor(Math.random() * 20) + 15;
 

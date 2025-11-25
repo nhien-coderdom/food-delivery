@@ -342,11 +342,15 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#eee",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0px 1px 4px rgba(0,0,0,0.05)" }
+      : {
+          shadowColor: "#000",
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 1 },
+          elevation: 2,
+        }),
     gap: 14,
   },
 

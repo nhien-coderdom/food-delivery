@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:1337";
+const API_URL = import.meta.env.VITE_API_URL ?? "http:// 10.10.30.182:1337";
 
 export default function LoginPage({
   onSuccess,
@@ -34,6 +34,7 @@ export default function LoginPage({
       });
 
       const data = await response.json();
+      console.log("✅ Login response data:", data);
 
       if (!response.ok || !data?.jwt) {
         throw new Error(data?.error?.message ?? "Đăng nhập thất bại, vui lòng thử lại");

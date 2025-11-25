@@ -110,7 +110,6 @@ export function AddressProvider({ children }: { children: ReactNode }) {
     }),
     [currentAddress, currentLocation, saved]
   );
-  console.log(value)
 
   return (
     <AddressContext.Provider value={value}>{children}</AddressContext.Provider>
@@ -123,3 +122,6 @@ export function useAddress() {
   if (!ctx) throw new Error("useAddress must be used within AddressProvider");
   return ctx;
 }
+
+// Default export to satisfy expo-router which treats files under `app/` as routes
+export default AddressProvider;

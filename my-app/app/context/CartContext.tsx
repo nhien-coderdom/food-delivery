@@ -65,19 +65,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Load carts
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (parsed && typeof parsed === "object") setCarts(parsed);
+          if (parsed && typeof parsed === "object" && mounted) setCarts(parsed);
         }
       } catch (e) {
         console.warn("Failed loading carts", e);
       } finally {
-        hydrated.current = true;
+        if (mounted) hydrated.current = true;
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Persist local
@@ -94,7 +100,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const currentCart = useMemo(() => {
-    if (!currentRestaurant) return [];
+    if (currentRestaurant == null) return [];
     return carts[currentRestaurant] || [];
   }, [currentRestaurant, carts]);
 
@@ -105,7 +111,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const addItem: CartContextType["addItem"] = (item) => {
     const restId = item.restaurantId;
 
-    if (!currentRestaurant || currentRestaurant !== restId) {
+    if (currentRestaurant == null || currentRestaurant !== restId) {
       selectRestaurant(restId, item.restaurantName);
     }
 
@@ -134,7 +140,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // REMOVE ITEM
   const removeItem = (dishId: number) => {
-    if (!currentRestaurant) return;
+    if (currentRestaurant == null) return;
     setCarts((prev) => ({
       ...prev,
       [currentRestaurant]: prev[currentRestaurant].filter((i) => i.dishId !== dishId),
@@ -143,7 +149,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // UPDATE QUANTITY
   const updateQuantity = (dishId: number, quantity: number) => {
-    if (!currentRestaurant) return;
+    if (currentRestaurant == null) return;
     setCarts((prev) => {
       const updatedCart =
         quantity <= 0
@@ -158,7 +164,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // UPDATE NOTE
   const updateNote = (dishId: number, notes: string) => {
-    if (!currentRestaurant) return;
+    if (currentRestaurant == null) return;
     setCarts((prev) => {
       const updated = prev[currentRestaurant].map((i) =>
         i.dishId === dishId ? { ...i, notes } : i
@@ -169,7 +175,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // CLEAR CART
   const clearCart = () => {
-    if (!currentRestaurant) return;
+    if (currentRestaurant == null) return;
     setCarts((prev) => {
       const clone = { ...prev };
       delete clone[currentRestaurant];
@@ -271,3 +277,6 @@ export function useCart() {
   if (!ctx) throw new Error("useCart must be used inside CartProvider");
   return ctx;
 }
+
+// Default export for expo-router route handling
+export default CartProvider;

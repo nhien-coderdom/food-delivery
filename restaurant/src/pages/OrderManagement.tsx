@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 // Normalise the API base so we never end up with duplicated /api segments.
-const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:1337").trim();
+const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337").trim();
 const NORMALIZED_API_URL = RAW_API_URL.replace(/\/+$/, "");
 const API_ROOT = NORMALIZED_API_URL.endsWith("/api") ? NORMALIZED_API_URL : `${NORMALIZED_API_URL}/api`;
 
@@ -11,8 +11,8 @@ type OrderManagementProps = {
   user?: { id?: number | null } | null;
 };
 
-type OrderStatus = "pending" | "confirmed" | "canceled" | "delivered";
-const ORDER_STATUS_VALUES: OrderStatus[] = ["pending", "confirmed", "canceled", "delivered"];
+type OrderStatus = "pending" | "confirmed" | "ready" | "delivering" | "canceled" | "delivered";
+const ORDER_STATUS_VALUES: OrderStatus[] = ["pending", "confirmed", "ready", "delivering", "canceled", "delivered"];
 
 type PaymentStatus = "paid" | "unpaid" | "refunded";
 const PAYMENT_STATUS_VALUES: PaymentStatus[] = ["paid", "unpaid", "refunded"];
@@ -59,11 +59,19 @@ const ORDER_STATUS_META: Record<OrderStatus, { label: string; badge: { backgroun
     badge: { background: "#fef3c7", color: "#b45309" },
   },
   confirmed: {
-    label: "Đã xác nhận",
+    label: "Xác nhận",
     badge: { background: "#dcfce7", color: "#15803d" },
   },
+  ready: {
+    label: "Sẵn sàng",
+    badge: { background: "#fff7ed", color: "#c2410c" },
+  },
+  delivering: {
+    label: "Đang giao",
+    badge: { background: "#e8f0ff", color: "#1e40af" },
+  },
   canceled: {
-    label: "Đã huỷ",
+    label: "Huỷ",
     badge: { background: "#fee2e2", color: "#b91c1c" },
   },
   delivered: {
@@ -90,14 +98,10 @@ const PAYMENT_STATUS_META: Record<PaymentStatus, { label: string; badge: { backg
 const ORDER_STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
   { value: "pending", label: ORDER_STATUS_META.pending.label },
   { value: "confirmed", label: ORDER_STATUS_META.confirmed.label },
+  { value: "ready", label: ORDER_STATUS_META.ready.label },
+  { value: "delivering", label: ORDER_STATUS_META.delivering.label },
   { value: "canceled", label: ORDER_STATUS_META.canceled.label },
   { value: "delivered", label: ORDER_STATUS_META.delivered.label },
-];
-
-const PAYMENT_STATUS_OPTIONS: { value: PaymentStatus; label: string }[] = [
-  { value: "unpaid", label: PAYMENT_STATUS_META.unpaid.label },
-  { value: "paid", label: PAYMENT_STATUS_META.paid.label },
-  { value: "refunded", label: PAYMENT_STATUS_META.refunded.label },
 ];
 
 const currencyFormatter = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" });
@@ -193,11 +197,11 @@ const mapOrderItem = (raw: any): OrderItem | null => {
   const dishNameCandidates = [dishAttributes?.name, (dishAttributes as any)?.title, (dishAttributes as any)?.label];
   const dishName = dishNameCandidates.find((candidate) => typeof candidate === "string" && candidate.trim() !== "");
 
-  const quantityRaw = (attributes as any)?.quatity ?? (attributes as any)?.quantity ?? 0;
+  const quantityRaw = (attributes as any)?.quantity ?? 0;
   const quantityValue = Number(quantityRaw);
   const quantity = Number.isFinite(quantityValue) ? quantityValue : 0;
 
-  const priceRaw = (attributes as any)?.price ?? (attributes as any)?.unitPrice ?? 0;
+  const priceRaw = (attributes as any)?.price ?? 0;
   const priceValue = Number(priceRaw);
   const price = Number.isFinite(priceValue) ? priceValue : 0;
 
@@ -218,59 +222,37 @@ const mapOrder = (raw: any): Order => {
   const idValue = raw?.id ?? attributes.id;
   const id = Number.isFinite(Number(idValue)) ? Number(idValue) : 0;
 
-  const codeCandidates = [
-    attributes?.orderID,
-    attributes?.code,
-    attributes?.reference,
-    attributes?.orderCode,
-    id ? `ORD-${id}` : null,
-  ];
-  const code = codeCandidates.find((candidate) => typeof candidate === "string" && candidate.trim() !== "") ?? `ORD-${id || 0}`;
+  const code = typeof attributes?.orderID === "string" && attributes.orderID ? attributes.orderID : `ORD-${id}`;
 
-  const totalRaw = attributes?.totalPrice ?? attributes?.total ?? 0;
+  const totalRaw = attributes?.totalPrice ?? 0;
   const totalValue = Number(totalRaw);
   const total = Number.isFinite(totalValue) ? totalValue : 0;
 
-  const status = normalizeOrderStatus(attributes?.statusOrder ?? attributes?.status);
-  const paymentStatus = normalizePaymentStatus(attributes?.paymentStatus ?? attributes?.payment);
+  const status = normalizeOrderStatus(attributes?.statusOrder);
+  const paymentStatus = normalizePaymentStatus(attributes?.paymentStatus);
 
   const note = typeof attributes?.note === "string" ? attributes.note : "";
   const phoneNumber = typeof attributes?.phoneNumber === "string" ? attributes.phoneNumber : "";
   const createdAt = typeof attributes?.createdAt === "string" ? attributes.createdAt : "";
   const updatedAt = typeof attributes?.updatedAt === "string" ? attributes.updatedAt : createdAt;
 
-  const restaurantEntry = ensureRelationEntry(attributes?.restaurant ?? (raw as any)?.restaurant);
+  const restaurantEntry = ensureRelationEntry(attributes?.restaurant);
   const restaurantAttributes = (restaurantEntry?.attributes ?? restaurantEntry ?? {}) as Record<string, unknown>;
   const restaurantIdValue = restaurantEntry?.id ?? restaurantAttributes.id;
-  const restaurantNameCandidates = [restaurantAttributes?.name, (restaurantAttributes as any)?.title];
-  const restaurantName = restaurantNameCandidates.find(
-    (candidate) => typeof candidate === "string" && candidate.trim() !== ""
-  );
+  const restaurantName = typeof restaurantAttributes?.name === "string" ? restaurantAttributes.name : "Nhà hàng";
 
-  const userEntry = ensureRelationEntry(
-    attributes?.users_permissions_user ?? attributes?.user ?? (raw as any)?.users_permissions_user
-  );
+  const userEntry = ensureRelationEntry(attributes?.users_permissions_user);
   const userAttributes = (userEntry?.attributes ?? userEntry ?? {}) as Record<string, unknown>;
   const userIdValue = userEntry?.id ?? userAttributes.id;
-  const customerNameCandidates = [
-    userAttributes?.fullName,
-    userAttributes?.name,
-    userAttributes?.username,
-    userAttributes?.email,
-  ];
-  const customerName = customerNameCandidates.find(
-    (candidate) => typeof candidate === "string" && candidate.trim() !== ""
-  );
+  const customerName = typeof userAttributes?.fullName === "string" && userAttributes.fullName
+    ? userAttributes.fullName
+    : typeof userAttributes?.name === "string" && userAttributes.name
+    ? userAttributes.name
+    : typeof userAttributes?.email === "string" ? userAttributes.email : "Khách hàng";
   const customerEmail = typeof userAttributes?.email === "string" ? userAttributes.email : "";
-  const customerPhoneCandidates = [
-    phoneNumber,
-    userAttributes?.phone,
-    userAttributes?.phoneNumber,
-    userAttributes?.mobile,
-  ];
-  const customerPhone = customerPhoneCandidates.find(
-    (candidate) => typeof candidate === "string" && candidate.trim() !== ""
-  );
+  const customerPhone = typeof userAttributes?.phone === "string" && userAttributes.phone
+    ? userAttributes.phone
+    : phoneNumber;
 
   const itemsContainer = attributes?.order_items ?? (raw as any)?.order_items ?? [];
   let itemEntries: any[] = [];
@@ -300,13 +282,13 @@ const mapOrder = (raw: any): Order => {
     updatedAt,
     restaurant: {
       id: Number.isFinite(Number(restaurantIdValue)) ? Number(restaurantIdValue) : null,
-      name: restaurantName ? String(restaurantName) : "Nhà hàng",
+      name: restaurantName,
     },
     customer: {
       id: Number.isFinite(Number(userIdValue)) ? Number(userIdValue) : null,
-      name: customerName ? String(customerName) : "Khách hàng",
+      name: customerName,
       email: customerEmail,
-      phone: customerPhone ? String(customerPhone) : "",
+      phone: customerPhone,
     },
     items,
   };
@@ -373,12 +355,16 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   const [apiError, setApiError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [paymentFilter, setPaymentFilter] = useState<string>("paid");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [statusDraft, setStatusDraft] = useState<OrderStatus | null>(null);
   const [paymentDraft, setPaymentDraft] = useState<PaymentStatus | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+
+  // Realtime (polling)
+  const POLLING_DEFAULT_MS = 5000;
+  const pollingRef = useRef<number | null>(null);
 
   const feedbackTimeoutRef = useRef<number | null>(null);
 
@@ -542,10 +528,18 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
 
         const url = new URL(`${API_ROOT}/orders/manager`);
         if (typeof targetRestaurantId === "number" && Number.isFinite(targetRestaurantId)) {
+          // server expects a `restaurantId` query param for the manager endpoint
+          url.searchParams.append("restaurantId", String(targetRestaurantId));
+          // keep the filters param as well for compatibility with other endpoints
           url.searchParams.append("filters[restaurant][id][$eq]", String(targetRestaurantId));
         }
         url.searchParams.append("sort[0]", "createdAt:desc");
+        url.searchParams.append("pagination[pageSize]", "50");
+        // Ensure related entries (order items, dish relation, user, restaurant, etc.) are populated
+        // so the client can read `attributes.order_items.data` and nested `dish` info.
         url.searchParams.append("populate", "*");
+
+        console.log('🔍 Fetching orders from:', url.toString());
 
         const response = await fetch(url.toString(), {
           headers: { Authorization: `Bearer ${resolvedToken}` },
@@ -554,6 +548,9 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
         const data = await response
           .json()
           .catch(() => ({}));
+
+        console.log(' Response status:', response.status);
+        console.log(' Response data:', data);
 
         if (response.status === 401) {
           handleAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
@@ -601,6 +598,48 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   useEffect(() => {
     fetchManagedRestaurants();
   }, [fetchManagedRestaurants]);
+
+  // Polling: refresh orders at an interval while the page is visible
+  useEffect(() => {
+    if (typeof selectedRestaurantId !== "number" || !Number.isFinite(selectedRestaurantId)) return;
+
+    // polling mounted flag not required
+
+    const tick = async () => {
+      try {
+        await fetchOrders(selectedRestaurantId, { silent: true });
+      } catch (e) {
+        // errors are handled inside fetchOrders
+      }
+    };
+
+    // initial immediate fetch
+    tick();
+
+    const onVisibility = () => {
+        if (!document.hidden) {
+          tick();
+        }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onVisibility);
+
+    pollingRef.current = window.setInterval(() => {
+      if (!document.hidden) {
+        tick();
+      }
+    }, POLLING_DEFAULT_MS) as unknown as number;
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current as unknown as number);
+        pollingRef.current = null;
+      }
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onVisibility);
+    };
+  }, [selectedRestaurantId, fetchOrders]);
 
   useEffect(() => {
     if (typeof selectedRestaurantId !== "number" || !Number.isFinite(selectedRestaurantId)) {
@@ -713,6 +752,13 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       return;
     }
 
+    // Prevent restaurant users from marking an order as "delivered".
+    // "delivered" should be set by the customer confirming receipt.
+    if ((updates as any).statusOrder === "delivered") {
+      showFeedback("Trạng thái 'Đã giao' chỉ do khách hàng xác nhận.");
+      return;
+    }
+
     try {
       setUpdatingOrderId(selectedOrder.id);
       setApiError(null);
@@ -741,6 +787,15 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       setOrders((prev) => prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
       setSelectedOrderId(updatedOrder.id);
       showFeedback("Đã cập nhật đơn hàng.");
+      // Refresh list after update to reflect any server-side changes
+      try {
+        const targetRid = updatedOrder?.restaurant?.id ?? selectedRestaurantId;
+        if (typeof targetRid === "number" && Number.isFinite(targetRid)) {
+          fetchOrders(targetRid, { silent: true });
+        }
+      } catch (e) {
+        // ignore
+      }
     } catch (error: any) {
       setApiError(error?.message ?? "Có lỗi xảy ra khi cập nhật đơn hàng.");
     } finally {
@@ -755,15 +810,17 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
     fetchOrders(selectedRestaurantId);
   }, [fetchOrders, selectedRestaurantId]);
 
-  const totalOrders = orders.length;
-  const pendingOrders = orders.filter((order) => order.status === "pending").length;
-  const confirmedOrders = orders.filter((order) => order.status === "confirmed").length;
+  const totalOrders = orders.filter((order) => order.paymentStatus === "paid").length;
+  const pendingOrders = orders.filter((order) => order.status === "pending" && order.paymentStatus === "paid").length;
+  const confirmedOrders = orders.filter((order) => order.status === "confirmed" && order.paymentStatus === "paid").length;
+  const readyOrders = orders.filter((order) => order.status === "ready" && order.paymentStatus === "paid").length;
+  const deliveringOrders = orders.filter((order) => order.status === "delivering" && order.paymentStatus === "paid").length;
   const deliveredOrders = orders.filter((order) => order.status === "delivered").length;
 
   const tokenMissing = !resolvedToken || !managerId;
 
   if (tokenMissing) {
-    return <p>⛔ Vui lòng đăng nhập để quản lý đơn hàng.</p>;
+    return <p> Vui lòng đăng nhập để quản lý đơn hàng.</p>;
   }
 
   return (
@@ -785,10 +842,10 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             marginBottom: 8,
           }}
         >
-          📦 Quản lý đơn hàng
+          Quản lý đơn hàng
         </h2>
         <p style={{ color: "rgba(255,255,255,0.9)", fontSize: 15 }}>
-          Theo dõi trạng thái đơn, cập nhật thanh toán và xem chi tiết món trong từng đơn hàng.
+          Theo dõi trạng thái đơn, xem chi tiết món trong từng đơn hàng.
         </p>
       </div>
 
@@ -805,7 +862,9 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       >
         <SummaryCard label="Tổng đơn" value={totalOrders} accent="#ff6f2c" />
         <SummaryCard label="Chờ xác nhận" value={pendingOrders} accent="#f59e0b" />
-        <SummaryCard label="Đã xác nhận" value={confirmedOrders} accent="#10b981" />
+        <SummaryCard label="Xác nhận" value={confirmedOrders} accent="#10b981" />
+        <SummaryCard label="Sẵn sàng" value={readyOrders} accent="#f97316" />
+        <SummaryCard label="Đang giao" value={deliveringOrders} accent="#3b82f6" />
         <SummaryCard label="Đã giao" value={deliveredOrders} accent="#0ea5e9" />
       </div>
 
@@ -834,7 +893,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             gap: 8,
           }}
         >
-          🔍 Bộ lọc đơn hàng
+          Bộ lọc đơn hàng
         </h3>
         <div
           style={{
@@ -850,23 +909,8 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
               onChange={(event) => setStatusFilter(event.target.value)}
               style={selectControlStyle}
             >
-              <option value="all"></option>
+              <option value="all">Tất cả</option>
               {ORDER_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </ControlField>
-
-          <ControlField label="Thanh toán">
-            <select
-              value={paymentFilter}
-              onChange={(event) => setPaymentFilter(event.target.value)}
-              style={selectControlStyle}
-            >
-              <option value="all"></option>
-              {PAYMENT_STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -892,11 +936,11 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             flexWrap: "wrap",
           }}
         >
-          <button
+            <button
             type="button"
             onClick={() => {
               setStatusFilter("all");
-              setPaymentFilter("all");
+                setPaymentFilter("paid");
               setSearchTerm("");
             }}
             style={{
@@ -946,16 +990,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
               color: "#6b7280",
             }}
           >
-            <div
-              style={{
-                fontSize: 48,
-                marginBottom: 16,
-                animation: "spin 2s linear infinite",
-              }}
-            >
-              ⏳
-            </div>
-          <p>Đang tải danh sách đơn hàng...</p>
+            <p>Đang tải danh sách đơn hàng...</p>
           </div>
         ) : filteredOrders.length === 0 ? (
           <div
@@ -966,7 +1001,6 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
               borderRadius: 16,
             }}
           >
-            <div style={{ fontSize: 64, marginBottom: 16 }}>📭</div>
             <p style={{ color: "#6b7280", fontSize: 16 }}>
               Chưa có đơn hàng nào phù hợp với bộ lọc hiện tại.
             </p>
@@ -992,9 +1026,8 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Liên hệ</th>
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Tổng tiền</th>
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Trạng thái</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Thanh toán</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Thanh Toán</th>
                   <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Tạo lúc</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -1037,26 +1070,28 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                         {order.createdAt ? dateTimeFormatter.format(new Date(order.createdAt)) : "—"}
                       </td>
                       <td style={{ padding: "12px", verticalAlign: "top" }}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOrderId(order.id)}
-                            style={{
-                              background: "white",
-                              color: "#1aa179",
-                              border: "1px solid #1aa179",
-                              borderRadius: 9999,
-                              padding: "6px 14px",
-                              fontWeight: 600,
-                              cursor: "pointer",
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrderId(order.id)}
+                          style={{
+                            background: isSelected
+                              ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                              : "white",
+                            color: isSelected ? "white" : "#10b981",
+                            border: isSelected ? "none" : "2px solid #10b981",
+                            borderRadius: 10,
+                            padding: "8px 16px",
+                            fontWeight: 600,
+                            cursor: "pointer",
                             fontSize: 13,
                             transition: "all 0.2s",
                             boxShadow: isSelected
                               ? "0 4px 12px rgba(16,185,129,0.3)"
                               : "none",
-                            }}
-                          >
-                          {isSelected ? "✓ Đang xem" : "👁️ Chi tiết"}
-                          </button>
+                          }}
+                        >
+                          {isSelected ? "Đang xem" : "Chi tiết"}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1188,22 +1223,12 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                   style={selectControlStyle}
                 >
                   {ORDER_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </ControlField>
-
-              <ControlField label="Thanh toán">
-                <select
-                  value={paymentDraft ?? selectedOrder.paymentStatus}
-                  onChange={(event) => setPaymentDraft(event.target.value as PaymentStatus)}
-                  style={selectControlStyle}
-                >
-                  {PAYMENT_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.value === "delivered"}
+                    >
+                      {option.label}{option.value === "delivered" ? " (khách xác nhận)" : ""}
                     </option>
                   ))}
                 </select>

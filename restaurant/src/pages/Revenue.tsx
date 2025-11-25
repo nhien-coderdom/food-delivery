@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:1337").trim();
+const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337").trim();
 const NORMALIZED_API_URL = RAW_API_URL.replace(/\/+$/, "");
 const API_ROOT = NORMALIZED_API_URL.endsWith("/api") ? NORMALIZED_API_URL : `${NORMALIZED_API_URL}/api`;
 
@@ -297,6 +297,9 @@ export default function Revenue({ token: tokenProp, user: userProp }: RevenuePro
 
         const url = new URL(`${API_ROOT}/orders/manager`);
         if (typeof targetRestaurantId === "number" && Number.isFinite(targetRestaurantId)) {
+          // backend manager endpoint expects `restaurantId` as a top-level query param
+          url.searchParams.append("restaurantId", String(targetRestaurantId));
+          // keep the filters param as well for compatibility
           url.searchParams.append("filters[restaurant][id][$eq]", String(targetRestaurantId));
         }
 
@@ -311,6 +314,7 @@ export default function Revenue({ token: tokenProp, user: userProp }: RevenuePro
         url.searchParams.append("pagination[pageSize]", "200");
         url.searchParams.append("sort[0]", "createdAt:desc");
         url.searchParams.append("populate[restaurant][fields][0]", "name");
+        url.searchParams.append("populate[restaurant][fields][1]", "id");
 
         const response = await fetch(url.toString(), {
           headers: { Authorization: `Bearer ${resolvedToken}` },
@@ -374,24 +378,9 @@ export default function Revenue({ token: tokenProp, user: userProp }: RevenuePro
     [paidOrders]
   );
 
-  const totalOrders = orders.length;
+  const totalOrders = paidOrders.length;
   const totalPaidOrders = paidOrders.length;
   const totalDeliveredOrders = deliveredOrders.length;
-  const averageOrderValue = totalPaidOrders > 0 ? totalRevenue / totalPaidOrders : 0;
-
-  const now = useMemo(() => new Date(), []);
-  const currentMonthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-
-  const monthlyRevenue = useMemo(() => {
-    return paidOrders.reduce((acc, order) => {
-      if (!order.createdAt) {
-        return acc;
-      }
-      const date = new Date(order.createdAt);
-      const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-      return key === currentMonthKey ? acc + order.total : acc;
-    }, 0);
-  }, [currentMonthKey, paidOrders]);
 
   const dailySeries = useMemo<DailyRevenuePoint[]>(() => {
     const map = new Map<string, { revenue: number; orders: number }>();

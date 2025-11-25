@@ -123,7 +123,7 @@ export default function HomePage() {
 
         <View style={styles.categoriesHeader}>
           <Text style={styles.sectionTitle}>All Categories</Text>
-          <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
+          <Pressable><Text style={styles.seeAll}></Text></Pressable>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
@@ -160,7 +160,7 @@ export default function HomePage() {
 
       <View style={styles.restaurantsHeader}>
         <Text style={styles.sectionTitle}>Open Restaurants</Text>
-        <Pressable><Text style={styles.seeAll}>See All →</Text></Pressable>
+        <Pressable><Text style={styles.seeAll}></Text></Pressable>
       </View>
 
       <RestaurantList query={query} category={selectedCategory} />

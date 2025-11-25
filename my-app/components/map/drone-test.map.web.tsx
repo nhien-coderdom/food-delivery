@@ -29,7 +29,7 @@ console.log("🚁 DroneTestWeb customer:", customer);
   // ==========================
   useEffect(() => {
     const backendUrl =
-      process.env.EXPO_PUBLIC_STRAPI_URL || "http://localhost:1337";
+      process.env.EXPO_PUBLIC_STRAPI_URL || "http://10.10.30.182:1337";
 
     const socket = io(backendUrl, {
       transports: ["websocket"],
