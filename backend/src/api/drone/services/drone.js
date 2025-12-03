@@ -8,7 +8,6 @@ module.exports = {
         return;
       }
 
-      // Lock drone
       await strapi.db.query("api::drone.drone").update({
         where: { id: drone.id },
         data: { state: "busy", isSimulating: true },
@@ -23,29 +22,54 @@ module.exports = {
         return;
       }
 
-      // 3 bước đầu → warehouse → restaurant → customer
       const routeToCustomer = [warehouse, restaurant, customer];
 
+      // ⭐ HÀM CHIA ĐIỂM
+      function interpolatePoints(start, end, steps = 5) {
+        const pts = [];
+        for (let i = 1; i <= steps; i++) {
+          pts.push({
+            lat: start.lat + ((end.lat - start.lat) * i) / steps,
+            lng: start.lng + ((end.lng - start.lng) * i) / steps,
+          });
+        }
+        return pts;
+      }
+
+      // ⭐ Tạo route mượt
+      const fullRoute = [];
+
+      for (let i = 0; i < routeToCustomer.length - 1; i++) {
+        const from = routeToCustomer[i];
+        const to = routeToCustomer[i + 1];
+
+        fullRoute.push(from, ...interpolatePoints(from, to, 5)); // 5 điểm giữa
+      }
+
+      // Thêm điểm cuối
+      fullRoute.push(routeToCustomer[routeToCustomer.length - 1]);
+
+      // Reset route
       order.route = [];
 
-      // Emit full route
+      // Emit route preview
       strapi.io.to(`order_${order.orderID}`).emit("drone:route", {
         orderID: order.orderID,
         droneID: drone.droneID,
-        route: [...routeToCustomer],
+        route: fullRoute,
       });
 
-      // LOOP tới khách hàng
-      for (let i = 0; i < routeToCustomer.length; i++) {
-        const p = routeToCustomer[i];
+      // ⭐ LOOP MƯỢT
+      for (let i = 0; i < fullRoute.length; i++) {
+        const p = fullRoute[i];
 
-        // Update drone
+        // Lưu drone position
         await strapi.db.query("api::drone.drone").update({
           where: { id: drone.id },
           data: { droneLocation: p },
         });
 
-        // Update route
+        // Lưu vào order.route
         order.route.push(p);
         await strapi.db.query("api::order.order").update({
           where: { id: order.id },
@@ -61,8 +85,8 @@ module.exports = {
           step: i,
         });
 
-        // 🟡 Tới nhà hàng → đổi trạng thái thành delivering
-        if (i === 1 && order.statusOrder === "ready") {
+        // Đến restaurant → chuyển delivering
+        if (i === 6 && order.statusOrder === "ready") {
           await strapi.db.query("api::order.order").update({
             where: { id: order.id },
             data: { statusOrder: "delivering" },
@@ -74,18 +98,16 @@ module.exports = {
           });
         }
 
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 1000)); // 1s mỗi điểm
       }
 
-      // 🛑 TỚI KHÁCH HÀNG → DỪNG DRONE TẠI ĐÂY
-      console.log("🛑 Drone đã tới khách hàng. Chờ client xác nhận 'Đã nhận hàng'.");
+      console.log("🛑 Drone đã tới khách hàng.");
 
       await strapi.db.query("api::drone.drone").update({
         where: { id: drone.id },
-        data: { isSimulating: false },            // dừng mô phỏng tạm thời
+        data: { isSimulating: false },
       });
 
-      // Emit event drone dừng
       strapi.io.to(`order_${order.orderID}`).emit("drone:arrived", {
         orderID: order.orderID,
         droneID: drone.droneID,

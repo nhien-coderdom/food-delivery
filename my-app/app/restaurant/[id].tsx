@@ -232,7 +232,7 @@ export default function RestaurantDetail() {
         </ScrollView>
 
         {/* LIST OF DISHES */}
-        <View style={styles.grid}>
+        <View style={styles.grid }>
           {filteredDishes.map((dish) => {
             const imgUrl = getImageUrl(dish.image?.url);
             const qty =
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 14, color: "#4B5563" },
   chipTextActive: { color: "#fff" },
 
-  grid: { width: "100%", flexDirection: "column", marginTop: 12 },
+  grid: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
 
   rowCard: {
     flexDirection: "row",

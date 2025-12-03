@@ -53,16 +53,7 @@ export default function TabsLayout() {
             ),
           }}
         />
-      <Tabs.Screen
-          name="drone-test"
-          options={{
-            title: "Drone Test",
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="map" size={size} color={color} />
-            ),
-          }}
-        />
-      </Tabs> 
+      </Tabs>
       
     </View>
   );

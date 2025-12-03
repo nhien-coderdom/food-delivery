@@ -38,7 +38,7 @@ export default function DroneTestWeb({ orderId, order }: DroneTestProps) {
   };
 
   // ============================================================
-  // TRIGGER DRONE 1 LẦN (KHI ORDER Ở READY)
+  // TRIGGER DRONE KHI STATUS = READY
   // ============================================================
   const triggeredRef = useRef(false);
 
@@ -96,29 +96,132 @@ export default function DroneTestWeb({ orderId, order }: DroneTestProps) {
     };
   }, [orderId]);
 
-  // Nếu đơn hàng đã hoàn thành → load route từ DB
-useEffect(() => {
-  if (!order) return;
+  // ============================================================
+  // LOAD ROUTE TRONG DB KHI DELIVERED
+  // ============================================================
+  useEffect(() => {
+    if (!order) return;
 
-  // Nếu backend lưu route dạng JSON array
-  if (order.statusOrder === "delivered" && Array.isArray(order.route)) {
-    const saved: [number, number][] = order.route.map((p: any) => [p.lng, p.lat]);
-    setRouteHistory(saved);
-    // Drone sẽ đứng ở điểm cuối
-    if (saved.length > 0) {
-      setCoords(saved[saved.length - 1]);
+    if (order.statusOrder === "delivered" && Array.isArray(order.route)) {
+      const saved: [number, number][] = order.route.map((p: any) => [
+        p.lng,
+        p.lat,
+      ]);
+      setRouteHistory(saved);
+
+      if (saved.length > 0) {
+        setCoords(saved[saved.length - 1]);
+      }
     }
-  }
-}, [order]);
+  }, [order]);
 
-  // Drone đang bay nếu order ở READY hoặc DELIVERING
- const isFlying =
-  order?.statusOrder === "ready" ||
-  order?.statusOrder === "delivering" ||
-  order?.statusOrder === "delivered";
+  // ============================================================
+  // CHECK TRẠNG THÁI BAY
+  // ============================================================
+  const isFlying =
+    order?.statusOrder === "ready" ||
+    order?.statusOrder === "delivering" ||
+    order?.statusOrder === "delivered";
+
+  // ============================================================
+  // HÀM TÍNH KHOẢNG CÁCH (KM)
+  // ============================================================
+  function haversineDistance(p1: LatLng, p2: LatLng): number {
+    const R = 6371;
+    const dLat = (p2.lat - p1.lat) * (Math.PI / 180);
+    const dLng = (p2.lng - p1.lng) * (Math.PI / 180);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(p1.lat * (Math.PI / 180)) *
+        Math.cos(p2.lat * (Math.PI / 180)) *
+        Math.sin(dLng / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  const distanceWarehouseToRes = restaurant
+    ? haversineDistance(warehouse, restaurant)
+    : 0;
+
+  const distanceResToCustomer = restaurant && customer
+    ? haversineDistance(restaurant, customer)
+    : 0;
+
+  const totalDistance =
+    distanceWarehouseToRes + distanceResToCustomer;
+
+  // ============================================================
+  // REALTIME DISTANCES
+  // ============================================================
+  const [distanceDroneToRestaurant, setDistanceDroneToRestaurant] = useState(0);
+  const [distanceDroneToCustomer, setDistanceDroneToCustomer] = useState(0);
+  const [distanceTraveled, setDistanceTraveled] = useState(0);
+
+  useEffect(() => {
+    if (!coords) return;
+
+    // 🔵 Tổng km đã bay dựa trên routeHistory → realtime
+    if (routeHistory.length > 1) {
+      let sum = 0;
+      for (let i = 1; i < routeHistory.length; i++) {
+        const p1 = { lat: routeHistory[i - 1][1], lng: routeHistory[i - 1][0] };
+        const p2 = { lat: routeHistory[i][1], lng: routeHistory[i][0] };
+        sum += haversineDistance(p1, p2);
+      }
+      setDistanceTraveled(sum);
+    }
+
+    // 🔵 Drone → Restaurant
+    if (restaurant) {
+      setDistanceDroneToRestaurant(
+        haversineDistance(
+          { lat: coords[1], lng: coords[0] },
+          restaurant
+        )
+      );
+    }
+
+    // 🔵 Drone → Customer
+    if (customer) {
+      setDistanceDroneToCustomer(
+        haversineDistance(
+          { lat: coords[1], lng: coords[0] },
+          customer
+        )
+      );
+    }
+  }, [coords, routeHistory]);
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
+      {/* Panel hiển thị khoảng cách */}
+      <div
+        style={{
+          position: "absolute",
+          zIndex: 10,
+          top: 10,
+          left: 10,
+          background: "white",
+          padding: 12,
+          borderRadius: 8,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+          lineHeight: "20px",
+          fontSize: 14,
+          fontWeight: 600,
+          minWidth: 250,
+        }}
+      >
+        <div>🛫 Đã bay: {distanceTraveled.toFixed(2)} km</div>
+        <div>🛸 Cách Restaurant: {distanceDroneToRestaurant.toFixed(2)} km</div>
+        <div>🎯 Cách Customer: {distanceDroneToCustomer.toFixed(2)} km</div>
+        <div>
+          🚀 Còn lại:{" "}
+          {(distanceDroneToRestaurant + distanceDroneToCustomer).toFixed(2)} km
+        </div>
+      </div>
+
       <Map
         mapLib={maplibregl}
         initialViewState={initialCenter}
