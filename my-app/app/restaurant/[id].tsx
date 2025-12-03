@@ -16,158 +16,208 @@ import CartBar from "@/components/CartBar";
 import { shadows } from "@/lib/shadowStyles";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/app/context/AuthContext";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-// Format tiền tệ
-const formatVND = (num: number) =>
-  num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
+/* ------------------ TYPES ------------------ */
+
+interface Category {
+  id: number;
+  name: string;
+  documentId: string;
+}
+
+interface Dish {
+  id: number;
+  name: string;
+  price: number;
+  image?: { url: string };
+  category?: Category | null;
+}
+
+interface Restaurant {
+  id: number;
+  documentId: string;
+  name: string;
+  description?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  image?: { url: string };
+  dishes?: Dish[];
+  rating?: number;
+  deliveryFee?: number;
+  deliveryTime?: number;
+  openingHours?: string;
+  closingHours?: string;
+}
 
 interface CategoryChip {
   id: string;
   name: string;
 }
 
+/* FORMAT MONEY */
+const formatVND = (num: number) =>
+  num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
+
+/* ------------------ MAIN COMPONENT ------------------ */
+
 export default function RestaurantDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const [restaurant, setRestaurant] = useState<any>(null);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [selectedCat, setSelectedCat] = useState("all");
   const [loading, setLoading] = useState(true);
   const { jwt } = useAuth();
-
-  // ✅ Context mới — không cần getItemQuantity
   const { addItem, updateQuantity, selectRestaurant, currentCart } = useCart();
 
+  /* FETCH RESTAURANT */
   useEffect(() => {
     async function fetchRestaurant() {
       try {
-        const res = await fetch(
-          `${API_URL}/api/restaurants?filters[documentId][$eq]=${id}&populate[image]=true&populate[categories]=true&populate[dishes][populate]=image&populate[dishes][populate]=category`,
-          {
-            headers: {
-              Authorization: `Bearer ${jwt}`, // 🔥 BẮT BUỘC
-            },
-          }
-        );
+        const url =
+          `${API_URL}/api/restaurants` +
+          `?filters[documentId][$eq]=${id}` +
+          `&populate[image]=true` +
+          `&populate[dishes][populate][image]=true` +
+          `&populate[dishes][populate][category]=true`;
 
-        if (!res.ok) {
-          console.log("❌ Restaurant API error:", await res.text());
-          throw new Error("Failed to fetch restaurant");
-        }
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
 
         const json = await res.json();
-        const restaurantData = json.data?.[0];
+        const data = json.data?.[0];
 
-        setRestaurant(restaurantData);
-
-        if (restaurantData) {
-          selectRestaurant(restaurantData.id, restaurantData.name);
+        if (data) {
+          setRestaurant(data);
+          selectRestaurant(data.id, data.name);
         }
-      } catch (err) {
-        console.warn("❌ Lỗi tải dữ liệu nhà hàng:", err);
+      } catch (e) {
+        setRestaurant(null);
       } finally {
         setLoading(false);
       }
     }
 
-    if (jwt) fetchRestaurant();   // chỉ fetch khi jwt có
+    if (jwt) fetchRestaurant();
   }, [id, jwt]);
 
-  if (loading)
-    return <ActivityIndicator style={{ marginTop: 80 }} size="large" color="#FF6B35" />;
+  if (loading) {
+    return (
+      <ActivityIndicator
+        style={{ marginTop: 80 }}
+        size="large"
+        color="#FF6B35"
+      />
+    );
+  }
 
-  if (!restaurant) return <Text>Không tìm thấy nhà hàng.</Text>;
+  if (!restaurant) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Text>Không tìm thấy nhà hàng.</Text>
+      </SafeAreaView>
+    );
+  }
 
-  const dishes = restaurant.dishes || [];
+  /* SAFE DISHES */
+  const dishes: Dish[] = restaurant.dishes ?? [];
 
-  // ✅ Lấy danh mục từ API
+  /* BUILD CATEGORIES SAFE */
   const categories: CategoryChip[] = [
     { id: "all", name: "Tất cả" },
-    ...(restaurant.categories?.map((c: any) => ({
-      id: c.id.toString(),
-      name: c.name,
-    })) || []),
+    ...Array.from(
+      new Map(
+        dishes
+          .filter((d) => d.category?.documentId)
+          .map((d) => [
+            d.category!.documentId,
+            {
+              id: d.category!.documentId,
+              name: d.category!.name,
+            } as CategoryChip,
+          ])
+      ).values()
+    ),
   ];
 
-  // ✅ Lọc món theo danh mục
+  /* FILTER DISHES */
   const filteredDishes =
     selectedCat === "all"
       ? dishes
-      : dishes.filter((d: any) => d.category?.id?.toString() === selectedCat);
+      : dishes.filter((d) => d.category?.documentId === selectedCat);
+
+  /* ------------------ RENDER ------------------ */
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* Header Image */}
-      <View style={styles.headerWrapper}>
-        <Image
-          source={{ uri: getImageUrl(restaurant.image?.url) }}
-          style={styles.headerImage}
-          resizeMode="contain"
-        />
-
-        <Pressable onPress={() => {
-          if (router.canGoBack()) router.back();
-          else router.push("/");
-        }} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color="#111" />
-        </Pressable>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
 
       <ScrollView contentContainerStyle={styles.body}>
+
+        {/* HEADER LOGO */}
+        <View style={styles.headerWrapper}>
+          <Image
+            source={{ uri: getImageUrl(restaurant.image?.url) }}
+            style={styles.headerImage}
+            resizeMode="contain"
+          />
+
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={22} color="#111" />
+          </Pressable>
+        </View>
+
+        {/* NAME */}
         <Text style={styles.title}>{restaurant.name}</Text>
 
+        {/* INFO BADGES */}
         <View style={styles.infoRow}>
           <View style={styles.iconBadge}>
             <Ionicons name="star" size={14} color="#FFB800" />
-            <Text style={styles.infoText}>{restaurant.rating || "N/A"}</Text>
+            <Text style={styles.infoText}>{restaurant.rating ?? "N/A"}</Text>
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="bicycle" size={14} color="#10B981" />
             <Text style={styles.infoText}>
-              {restaurant.deliveryFee === 0 ? "Free" : formatVND(restaurant.deliveryFee)}
+              {restaurant.deliveryFee
+                ? formatVND(restaurant.deliveryFee)
+                : "Free"}
             </Text>
           </View>
           <View style={styles.iconBadge}>
             <Ionicons name="time-outline" size={14} color="#6B7280" />
-            <Text style={styles.infoText}>{restaurant.deliveryTime || 30} min</Text>
+            <Text style={styles.infoText}>
+              {restaurant.deliveryTime || 30} min
+            </Text>
           </View>
         </View>
 
-        {/* Address & Phone */}
+        {/* ADDRESS */}
         {restaurant.address && (
           <View style={styles.detailRow}>
             <Ionicons name="location" size={16} color="#6B7280" />
             <Text style={styles.detailText}>{restaurant.address}</Text>
           </View>
         )}
-        {restaurant.phone && (
-          <View style={styles.detailRow}>
-            <Ionicons name="call" size={16} color="#6B7280" />
-            <Text style={styles.detailText}>{restaurant.phone}</Text>
-          </View>
-        )}
-        {(restaurant.openingHours || restaurant.closingHours) && (
-          <View style={styles.detailRow}>
-            <Ionicons name="time" size={16} color="#6B7280" />
-            <Text style={styles.detailText}>
-              {restaurant.openingHours || "09:00"} - {restaurant.closingHours || "22:00"}
-            </Text>
-          </View>
-        )}
 
-        <Text style={styles.description}>{restaurant.description}</Text>
-
-        {/* Category Chips */}
+        {/* CATEGORY CHIPS */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ marginVertical: 10 }}
-          contentContainerStyle={{ gap: 10 }}
+          contentContainerStyle={{ gap: 10, paddingRight: 16 }}
         >
           {categories.map((cat) => (
             <Pressable
               key={cat.id}
               onPress={() => setSelectedCat(cat.id)}
-              style={[styles.chip, selectedCat === cat.id && styles.chipActive]}
+              style={[
+                styles.chip,
+                selectedCat === cat.id && styles.chipActive,
+              ]}
             >
               <Text
                 style={[
@@ -181,34 +231,36 @@ export default function RestaurantDetail() {
           ))}
         </ScrollView>
 
-        {/* Dishes */}
+        {/* LIST OF DISHES */}
         <View style={styles.grid}>
-          {filteredDishes.map((dish: any) => {
+          {filteredDishes.map((dish) => {
             const imgUrl = getImageUrl(dish.image?.url);
             const qty =
-              (currentCart ?? []).find((it) => it.dishId === dish.id)?.quantity ?? 0;
-
+              currentCart?.find((it) => it.dishId === dish.id)?.quantity ?? 0;
 
             return (
-              <View key={dish.id} style={styles.card}>
-                <View style={styles.dishImageWrapper}>
-                  <Image
-                    source={{ uri: imgUrl }}
-                    style={styles.dishImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <View style={styles.cardContent}>
-                  <Text style={styles.dishName}>{dish.name}</Text>
-                  <Text style={styles.dishPrice}>{formatVND(dish.price)}</Text>
+              <View key={dish.id} style={styles.rowCard}>
+                <Image source={{ uri: imgUrl }} style={styles.rowImage} />
 
+                <View style={styles.rowMiddle}>
+                  <Text style={styles.rowTitle}>{dish.name}</Text>
+                  <Text style={styles.rowSubtitle}>
+                    {dish.category?.name ?? ""}
+                  </Text>
+                  <Text style={styles.rowFinalPrice}>
+                    {formatVND(dish.price)}
+                  </Text>
+                </View>
+
+                {/* BUTTONS */}
+                <View style={styles.rowRight}>
                   {qty === 0 ? (
                     <Pressable
                       onPress={() =>
                         addItem({
                           dishId: dish.id,
                           name: dish.name,
-                          price: dish.price ?? 0,
+                          price: dish.price,
                           restaurantId: restaurant.id,
                           restaurantName: restaurant.name,
                           image: imgUrl,
@@ -216,7 +268,7 @@ export default function RestaurantDetail() {
                       }
                       style={styles.addBtn}
                     >
-                      <Text style={styles.addBtnText}>+</Text>
+                      <Ionicons name="add" size={18} color="#fff" />
                     </Pressable>
                   ) : (
                     <View style={styles.qtyRow}>
@@ -226,7 +278,9 @@ export default function RestaurantDetail() {
                       >
                         <Text style={styles.qtyText}>−</Text>
                       </Pressable>
+
                       <Text style={styles.qtyNumber}>{qty}</Text>
+
                       <Pressable
                         style={styles.qtyBtn}
                         onPress={() => updateQuantity(dish.id, qty + 1)}
@@ -242,117 +296,118 @@ export default function RestaurantDetail() {
         </View>
       </ScrollView>
 
+      {/* FIXED CART BAR */}
       <CartBar />
-    </View>
+
+    </SafeAreaView>
   );
 }
 
-/* ---------- STYLES ---------- */
-
-const cardWidth = Platform.select({
-  web: "calc(33% - 14px)",
-  default: "100%",
-});
+/* ------------------ STYLES ------------------ */
 
 const styles = StyleSheet.create({
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  body: { padding: 16, paddingBottom: 140 },
+
   headerWrapper: {
     width: "100%",
     height: 220,
-    position: "relative",
-    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
   },
+
   headerImage: { width: "100%", height: "100%" },
+
   backButton: {
     position: "absolute",
-    top: 40,
+    top: 20,
     left: 16,
     backgroundColor: "#fff",
     padding: 10,
     borderRadius: 30,
     ...shadows.small,
   },
-  body: { padding: 16, paddingBottom: 100 },
+
   title: { fontSize: 24, fontWeight: "700", marginTop: 10 },
+
   infoRow: { flexDirection: "row", gap: 12, marginTop: 6 },
   iconBadge: { flexDirection: "row", gap: 4, alignItems: "center" },
-  infoText: { fontSize: 13, color: "#4B5563", fontWeight: "500" },
+  infoText: { fontSize: 13, color: "#4B5563" },
+
   detailRow: {
     flexDirection: "row",
     gap: 6,
     alignItems: "center",
-    marginTop: 8
+    marginTop: 8,
   },
-  detailText: {
-    fontSize: 13,
-    color: "#6B7280",
-    flex: 1
-  },
-  description: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginTop: 10,
-    lineHeight: 20,
-  },
+  detailText: { fontSize: 13, color: "#6B7280", flex: 1 },
+
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 14,
     backgroundColor: "#F3F4F6",
     borderRadius: 22,
-    marginRight: 10,
   },
   chipActive: { backgroundColor: "#FF6B35" },
-  chipText: { fontSize: 14, color: "#4B5563", fontWeight: "500" },
+  chipText: { fontSize: 14, color: "#4B5563" },
   chipTextActive: { color: "#fff" },
-  grid: {
+
+  grid: { width: "100%", flexDirection: "column", marginTop: 12 },
+
+  rowCard: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    justifyContent: Platform.OS === "web" ? "flex-start" : "center",
-    marginTop: 12,
-  },
-  card: {
-    width: cardWidth as any,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    overflow: "hidden",
-    ...shadows.card,
-  },
-  dishImageWrapper: {
-    height: 160,
-    padding: 12,
-    backgroundColor: "#fff",
-    justifyContent: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderColor: "#e5e7eb",
     alignItems: "center",
   },
-  dishImage: { width: "100%", height: "100%" },
-  cardContent: { padding: 10 },
-  dishName: { fontSize: 16, fontWeight: "600" },
-  dishPrice: { fontSize: 14, color: "#16a34a", marginVertical: 6 },
+
+  rowImage: {
+    width: 85,
+    height: 85,
+    borderRadius: 12,
+    marginRight: 16,
+    backgroundColor: "#f3f4f6",
+  },
+
+  rowMiddle: { flex: 1 },
+
+  rowTitle: { fontSize: 16, fontWeight: "600" },
+  rowSubtitle: { fontSize: 13, color: "#6B7280" },
+
+  rowFinalPrice: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#16a34a",
+    marginTop: 4,
+  },
+
+  rowRight: { justifyContent: "center", alignItems: "center" },
+
   addBtn: {
     backgroundColor: "#FF6B35",
-    width: 36,
-    height: 36,
-    borderRadius: 20,
-    alignItems: "center",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: "center",
+    alignItems: "center",
   },
-  addBtnText: { color: "#fff", fontSize: 20 },
+
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+
   qtyBtn: {
     backgroundColor: "#F3F4F6",
     width: 32,
     height: 32,
-    alignItems: "center",
-    justifyContent: "center",
     borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
   },
+
   qtyText: { fontSize: 18, fontWeight: "700", color: "#FF6B35" },
-  qtyNumber: {
-    minWidth: 24,
-    textAlign: "center",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+
+  qtyNumber: { minWidth: 24, textAlign: "center", fontSize: 15 },
 });

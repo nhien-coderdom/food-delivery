@@ -21,25 +21,25 @@ interface Category {
   documentId: string;
 }
 
+interface Dish {
+  id: number;
+  name: string;
+  price: number;
+  category?: Category | null;
+}
+
 interface Restaurant {
   id: number;
   documentId: string;
   name: string;
   image?: { url: string };
-  categories?: Category[];
+  dishes?: Dish[];
 }
 
 interface RestaurantListProps {
   query?: string;
-  category?: string;
+  category?: string; // category documentId
 }
-
-const getNumColumns = () => {
-  const { width } = Dimensions.get("window");
-  if (width > 1200) return 4;
-  if (width > 768) return 3;
-  return 2;
-};
 
 export default function RestaurantList({
   query = "",
@@ -49,23 +49,22 @@ export default function RestaurantList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { jwt } = useAuth();
+
   useEffect(() => {
     async function fetchData() {
       try {
         const res = await fetch(
-  `${API_URL}/api/restaurants?populate[image]=true&populate[dishes]=true&populate[categories]=true`,
-  {
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-    },
-  }
-);
+          `${API_URL}/api/restaurants?populate[image]=true&populate[dishes][populate][category]=true`,
+          {
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+            },
+          }
+        );
 
         const json = await res.json();
-        console.log("✅ Fetched restaurants:", json);
         setRestaurants(Array.isArray(json.data) ? json.data : []);
       } catch (err: any) {
-        console.error("❌ Error fetching restaurants:", err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -73,7 +72,7 @@ export default function RestaurantList({
     }
 
     fetchData();
-  }, []);
+  }, [jwt]);
 
   if (loading)
     return (
@@ -97,40 +96,47 @@ export default function RestaurantList({
       </View>
     );
 
-  // ✅ New filter logic (query + category)
-  const filtered = restaurants.filter((r) => {
-    // match name search
+  // ---- 🔥 Tính toán category cho restaurant dựa trên các dish ----
+  const filterRestaurants = restaurants.filter((r) => {
     const matchQuery = r?.name?.toLowerCase().includes(query.toLowerCase());
 
-    // if no category filter or "all"
     if (category === "all") return matchQuery;
 
-    // ✅ match category (by documentId or name)
-    const matchCategory = r?.categories?.some(
-      (c) =>
-        c.documentId === category ||
-        c.name?.toLowerCase() === category.toLowerCase()
+    const restaurantCategories = Array.from(
+      new Set(
+        r?.dishes
+          ?.map((d) => d?.category?.documentId)
+          .filter(Boolean)
+      )
     );
+
+    const matchCategory = restaurantCategories.includes(category);
 
     return matchQuery && matchCategory;
   });
 
-  if (!filtered.length)
+  if (!filterRestaurants.length)
     return (
       <View style={styles.center}>
-        <Ionicons name="search-outline" size={60} color="#CCC" />
+        <Ionicons name="search-outline" size={60} color="#ccc" />
         <Text style={styles.emptyText}>No restaurants match your filter</Text>
       </View>
     );
 
   return (
     <View style={styles.container}>
-      {filtered.map((res) => {
-      const imgUrl = getImageUrl(res?.image?.url);
-      // Debug: log constructed image URL to help diagnose web/image host issues
-      // Remove this once image loading is confirmed
-      // eslint-disable-next-line no-console
-      console.debug('[RestaurantList] imgUrl for', res.name, ':', imgUrl);
+      {filterRestaurants.map((res) => {
+        const imgUrl = getImageUrl(res?.image?.url);
+
+        // 🔥 Extract category names from dishes
+        const restaurantCategoryNames = Array.from(
+          new Set(
+            res?.dishes
+              ?.map((d) => d?.category?.name)
+              .filter(Boolean)
+          )
+        );
+
         const rating = (4 + Math.random() * 0.7).toFixed(1);
         const delivery = Math.floor(Math.random() * 20) + 15;
 
@@ -138,20 +144,24 @@ export default function RestaurantList({
           <Link key={res.id} href={`../restaurant/${res.documentId}`} asChild>
             <Pressable style={styles.card}>
               <Image source={{ uri: imgUrl }} style={styles.cardImage} />
+
               <View style={styles.cardContent}>
                 <View style={styles.cardHeader}>
                   <Text style={styles.restaurantName} numberOfLines={1}>
                     {res.name}
                   </Text>
+
                   <View style={styles.ratingBadge}>
                     <Ionicons name="star" size={12} color="#FFB800" />
                     <Text style={styles.ratingText}>{rating}</Text>
                   </View>
                 </View>
 
+                {/* ---- 🔥 FIXED CATEGORY DISPLAY ---- */}
                 <Text style={styles.restaurantCategory}>
-                  {res?.categories?.map((c) => c?.name).join(" • ") ||
-                    "No category"}
+                  {restaurantCategoryNames.length
+                    ? restaurantCategoryNames.join(" • ")
+                    : "No category"}
                 </Text>
 
                 <View style={styles.footer}>
@@ -166,6 +176,8 @@ export default function RestaurantList({
     </View>
   );
 }
+
+// ------------------- STYLES -------------------
 
 const styles = StyleSheet.create({
   center: {
@@ -184,7 +196,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: Platform.select({
-      web: "calc(33.3% - 10px)",
+      web: "calc(25% - 20px)",
       default: "100%",
     }) as any,
     backgroundColor: "#fff",
@@ -194,7 +206,7 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     width: "100%",
-    height: Platform.select({ web: 160, default: 200 }) as number,
+    height: Platform.select({ web: 210, default: 200 }) as number,
     backgroundColor: "#eee",
   },
   cardContent: { padding: 12 },

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, CSSProperties, FormEvent, ReactNode } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://172.20.10.3:1337";
 
 type MenuManagementProps = {
   token?: string | null;

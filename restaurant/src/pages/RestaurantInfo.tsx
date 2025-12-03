@@ -5,7 +5,7 @@ type RestaurantInfoProps = {
   user?: { id?: number | null } | null;
 };
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://172.20.10.3:1337";
 
 export default function RestaurantInfo({ token: tokenProp, user: userProp }: RestaurantInfoProps) {
   const safeGetLocalStorage = useCallback((key: string) => {

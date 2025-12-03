@@ -8,20 +8,22 @@ const { createCoreController } = require('@strapi/strapi').factories;
 const getManagerRestaurantIds = require('../../../utils/get-manager-restaurant-ids');
 
 module.exports = createCoreController('api::restaurant.restaurant', ({ strapi }) => ({
-		async find(ctx) {
-			const { user } = ctx.state;
+	async find(ctx) {
+		const { user } = ctx.state;
 
-			// If a logged-in manager requests, restrict results to their managed restaurants.
-			let managedRestaurantIds = [];
-			if (user) {
-				managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
-				console.log('🔍 User ID:', user.id);
-				console.log('🔍 Managed restaurant IDs:', managedRestaurantIds);
-			}
+		// If a logged-in manager requests, restrict results to their managed restaurants.
+		let managedRestaurantIds = [];
+		if (user) {
+			managedRestaurantIds = await getManagerRestaurantIds(strapi, user.id);
+			console.log('🔍 User ID:', user.id);
+			console.log('🔍 Managed restaurant IDs:', managedRestaurantIds);
+		}
 
 		const sanitizedQuery = await this.sanitizeQuery(ctx);
-		sanitizedQuery.filters = sanitizedQuery.filters ?? {};
+
 		
+		sanitizedQuery.filters = sanitizedQuery.filters ?? {};
+
 		// Remove any manager/managers filter that might cause "Invalid key" error
 		if (sanitizedQuery.filters.manager) {
 			delete sanitizedQuery.filters.manager;
@@ -29,10 +31,7 @@ module.exports = createCoreController('api::restaurant.restaurant', ({ strapi })
 		if (sanitizedQuery.filters.managers) {
 			delete sanitizedQuery.filters.managers;
 		}
-		if (sanitizedQuery.filters.managers) {
-			delete sanitizedQuery.filters.managers;
-		}
-
+		
 		if (user && managedRestaurantIds.length > 0) {
 			// Only apply id filter when a manager is signed in and has assigned restaurants.
 			sanitizedQuery.filters.id = {
@@ -45,9 +44,9 @@ module.exports = createCoreController('api::restaurant.restaurant', ({ strapi })
 			.service('api::restaurant.restaurant')
 			.find(sanitizedQuery);
 
-    const sanitizedResults = await this.sanitizeOutput(results, ctx);
-    return this.transformResponse(sanitizedResults, { pagination });
-  },
+		const sanitizedResults = await this.sanitizeOutput(results, ctx);
+		return this.transformResponse(sanitizedResults, { pagination });
+	},
 
 	async findOne(ctx) {
 		// Allow public access to restaurant details so customers can view and order.

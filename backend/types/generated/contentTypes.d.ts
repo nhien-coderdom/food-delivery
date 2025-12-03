@@ -107,6 +107,43 @@ export interface AdminApiTokenPermission extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface AdminAuditLog extends Struct.CollectionTypeSchema {
+  collectionName: 'strapi_audit_logs';
+  info: {
+    displayName: 'Audit Log';
+    pluralName: 'audit-logs';
+    singularName: 'audit-log';
+  };
+  options: {
+    draftAndPublish: false;
+    timestamps: false;
+  };
+  pluginOptions: {
+    'content-manager': {
+      visible: false;
+    };
+    'content-type-builder': {
+      visible: false;
+    };
+  };
+  attributes: {
+    action: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date: Schema.Attribute.DateTime & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'admin::audit-log'> &
+      Schema.Attribute.Private;
+    payload: Schema.Attribute.JSON;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<'oneToOne', 'admin::user'>;
+  };
+}
+
 export interface AdminPermission extends Struct.CollectionTypeSchema {
   collectionName: 'admin_permissions';
   info: {
@@ -454,10 +491,6 @@ export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     name: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
-    restaurants: Schema.Attribute.Relation<
-      'manyToMany',
-      'api::restaurant.restaurant'
-    >;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -497,6 +530,45 @@ export interface ApiDishDish extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiDroneDrone extends Struct.CollectionTypeSchema {
+  collectionName: 'drones';
+  info: {
+    description: 'Drone delivery simulation entity';
+    displayName: 'Drone';
+    pluralName: 'drones';
+    singularName: 'drone';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    droneID: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    droneLocation: Schema.Attribute.JSON &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<{
+        lat: 10.760596;
+        lng: 106.681948;
+      }>;
+    isSimulating: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::drone.drone'> &
+      Schema.Attribute.Private;
+    orders: Schema.Attribute.Relation<'oneToMany', 'api::order.order'>;
+    publishedAt: Schema.Attribute.DateTime;
+    state: Schema.Attribute.Enumeration<['free', 'busy', 'error']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'free'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiOrderItemOrderItem extends Struct.CollectionTypeSchema {
   collectionName: 'order_items';
   info: {
@@ -511,8 +583,7 @@ export interface ApiOrderItemOrderItem extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    dish: Schema.Attribute.Relation<'manyToOne', 'api::dish.dish'> &
-      Schema.Attribute.Required;
+    dish: Schema.Attribute.Relation<'manyToOne', 'api::dish.dish'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -547,12 +618,16 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     customerLocation: Schema.Attribute.JSON;
     deliveryAddress: Schema.Attribute.String;
+    drone: Schema.Attribute.Relation<'manyToOne', 'api::drone.drone'>;
     drone_location: Schema.Attribute.JSON;
-    items: Schema.Attribute.Relation<'oneToMany', 'api::order-item.order-item'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::order.order'> &
       Schema.Attribute.Private;
     note: Schema.Attribute.String;
+    order_items: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::order-item.order-item'
+    >;
     orderID: Schema.Attribute.String &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
@@ -568,7 +643,15 @@ export interface ApiOrderOrder extends Struct.CollectionTypeSchema {
     >;
     route: Schema.Attribute.JSON;
     statusOrder: Schema.Attribute.Enumeration<
-      ['pending', 'confirmed', 'canceled', 'ready', 'delivering', 'delivered']
+      [
+        'pending',
+        'confirmed',
+        'canceled',
+        'waitingDrone',
+        'ready',
+        'delivering',
+        'delivered',
+      ]
     > &
       Schema.Attribute.DefaultTo<'pending'>;
     totalPrice: Schema.Attribute.Decimal;
@@ -594,10 +677,6 @@ export interface ApiRestaurantRestaurant extends Struct.CollectionTypeSchema {
   };
   attributes: {
     address: Schema.Attribute.Text;
-    categories: Schema.Attribute.Relation<
-      'manyToMany',
-      'api::category.category'
-    >;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -619,7 +698,7 @@ export interface ApiRestaurantRestaurant extends Struct.CollectionTypeSchema {
     orders: Schema.Attribute.Relation<'oneToMany', 'api::order.order'>;
     phone: Schema.Attribute.String &
       Schema.Attribute.SetMinMaxLength<{
-        maxLength: 10;
+        maxLength: 14;
         minLength: 10;
       }>;
     publishedAt: Schema.Attribute.DateTime;
@@ -1139,6 +1218,7 @@ declare module '@strapi/strapi' {
     export interface ContentTypeSchemas {
       'admin::api-token': AdminApiToken;
       'admin::api-token-permission': AdminApiTokenPermission;
+      'admin::audit-log': AdminAuditLog;
       'admin::permission': AdminPermission;
       'admin::role': AdminRole;
       'admin::session': AdminSession;
@@ -1147,6 +1227,7 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::category.category': ApiCategoryCategory;
       'api::dish.dish': ApiDishDish;
+      'api::drone.drone': ApiDroneDrone;
       'api::order-item.order-item': ApiOrderItemOrderItem;
       'api::order.order': ApiOrderOrder;
       'api::restaurant.restaurant': ApiRestaurantRestaurant;

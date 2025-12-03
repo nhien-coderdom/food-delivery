@@ -2,47 +2,58 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   Pressable,
   RefreshControl,
+  Image,
+  Animated,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState, useCallback } from "react";
+
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { API_URL } from "@/lib/apiConfig";
+import { useRouter } from "expo-router";
+import Navigation from "@/components/Navigation";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+const formatVND = (num: number) =>
+  (num || 0).toLocaleString("vi-VN", { style: "currency", currency: "VND" });
+
+function getStatusMeta(statusRaw: string) {
+  const status = (statusRaw || "pending").toLowerCase();
+
+  switch (status) {
+    case "pending": return { label: "Đang chờ", color: "#7C3AED" };
+    case "confirmed": return { label: "Đã xác nhận", color: "#F97316" };
+    case "ready": return { label: "Sẵn sàng", color: "#0EA5E9" };
+    case "delivering": return { label: "Đang giao", color: "#16A34A" };
+    case "delivered": return { label: "Đã giao", color: "#16A34A" };
+    case "canceled":
+    case "cancel": return { label: "Đã huỷ", color: "#DC2626" };
+    default: return { label: statusRaw, color: "#6B7280" };
+  }
+}
 
 export default function OrdersScreen() {
-  const { user, jwt } = useAuth();
+  const { jwt } = useAuth();
+  const router = useRouter();
 
   const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchOrders = useCallback(async () => {
-    if (!jwt) {
-      setOrders([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
+
       const res = await fetch(`${API_URL}/api/orders`, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
 
-      if (!res.ok) {
-        console.warn("Failed fetching orders", res.status);
-        setOrders([]);
-        return;
-      }
-
       const json = await res.json();
       setOrders(json.data || []);
     } catch (err) {
-      console.warn("Fetch orders error", err);
-      setOrders([]);
+      console.warn("Fetch orders error:", err);
     } finally {
       setLoading(false);
     }
@@ -58,113 +69,189 @@ export default function OrdersScreen() {
     setRefreshing(false);
   };
 
-  const renderItem = ({ item }: { item: any }) => {
+  // ⭐ Scroll animation
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const navbarTranslate = scrollY.interpolate({
+    inputRange: [0, 120],
+    outputRange: [0, -120],
+    extrapolate: "clamp",
+  });
+
+  // ⭐ Render Item — KHÔNG dùng SafeAreaView ở đây!
+  const renderItem = (item: any) => {
     const restaurant = item.restaurant || {};
+
+    const createdTime = new Date(item.createdAt).toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const createdDate = new Date(item.createdAt).toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+    const status = getStatusMeta(item.statusOrder);
+    const itemCount = item.order_items?.length || 1;
+
+    const image =
+      restaurant?.image?.url ||
+      "https://cdn-icons-png.flaticon.com/512/385/385350.png";
+
     return (
-      <View style={styles.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.orderId}>#{item.orderID}</Text>
-          <Text style={styles.restaurant}>{restaurant.name || "—"}</Text>
-          <Text style={styles.meta}>{item.phoneNumber || "—"} • {item.totalPrice || 0}₫</Text>
+      <Pressable
+        key={item.id}
+        style={styles.row}
+        onPress={() => router.push(`../orders/${item.orderID}`)}
+      >
+        <Image source={{ uri: image }} style={styles.avatar} />
+
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.restaurantName}>
+            {restaurant.name || "Nhà hàng"}
+          </Text>
+
+          <Text style={styles.subInfo}>{itemCount} món</Text>
+          <Text style={styles.subInfo}>{createdTime}, {createdDate}</Text>
+
+          <Text style={[styles.statusText, { color: status.color }]}>
+            {status.label}
+          </Text>
         </View>
-        <View style={{ alignItems: "flex-end" }}>
-          <Text style={styles.status}>{(item.statusOrder || "pending").toUpperCase()}</Text>
-          <Text style={styles.date}>{new Date(item.createdAt).toLocaleString()}</Text>
-        </View>
-      </View>
+
+        <Text style={styles.price}>{formatVND(item.totalPrice)}</Text>
+      </Pressable>
     );
   };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#FF6B35" />
-      </View>
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#EE6E19" />
+        </View>
+      </SafeAreaView>
     );
   }
 
+  // ⭐ Main
   return (
-    <FlatList
-      style={styles.container}
-      data={orders}
-      keyExtractor={(i) => String(i.id)}
-      renderItem={renderItem}
-      ListHeaderComponent={() => (
-        <View style={styles.header}>
-          <Text style={styles.title}>My Orders</Text>
-        </View>
-      )}
-      ListEmptyComponent={() => (
-        <View style={styles.emptyState}>
-          <Ionicons name="receipt-outline" size={80} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>No orders yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Start ordering delicious food from your favorite restaurants!
-          </Text>
-        </View>
-      )}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
+      <View style={{ flex: 1 }}>
+
+        {/* NAVIGATION FIXED */}
+        <Animated.View
+          style={[
+            styles.navWrapper,
+            { transform: [{ translateY: navbarTranslate }] },
+          ]}
+        >
+          <Navigation />
+        </Animated.View>
+
+        {/* CONTENT */}
+        <Animated.ScrollView
+          style={{ flex: 1 }}
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+        >
+          <View style={{ height: 130 }} />
+
+          <View style={styles.header}>
+            <Text style={styles.title}>Hoạt động</Text>
+            <Text style={styles.recent}>Gần đây</Text>
+          </View>
+
+          <View style={{ paddingBottom: 60 }}>
+            {orders.map((o) => renderItem(o))}
+          </View>
+        </Animated.ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
+//
+// ⭐ STYLES giống HomePage ⭐
+//
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAFAFA",
+  navWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    backgroundColor: "#fff",
+    elevation: 10,
+    paddingBottom: 4,
   },
+
   header: {
     backgroundColor: "#FFF",
-    paddingVertical: 20,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    paddingTop: 10,
+    paddingBottom: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 80,
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "600",
+
+  title: { fontSize: 28, fontWeight: "700", color: "#1F2937" },
+  recent: {
+    marginTop: 6,
+    fontSize: 16,
     color: "#6B7280",
-    marginTop: 16,
-    marginBottom: 8,
   },
-  emptySubtitle: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
   row: {
     flexDirection: "row",
-    padding: 16,
-    backgroundColor: "#fff",
-    marginHorizontal: 12,
+    marginHorizontal: 16,
     marginVertical: 8,
-    borderRadius: 10,
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 16,
+    elevation: 2,
     alignItems: "center",
-    justifyContent: "space-between",
+    borderColor: "#E5E7EB",
     borderWidth: 1,
-    borderColor: "#F3F4F6",
   },
 
-  orderId: { fontSize: 14, fontWeight: "700", color: "#111" },
-  restaurant: { fontSize: 13, color: "#374151", marginTop: 4 },
-  meta: { fontSize: 12, color: "#6B7280", marginTop: 6 },
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: "#eee",
+  },
 
-  status: { fontSize: 12, fontWeight: "800", color: "#FF6B35" },
-  date: { fontSize: 11, color: "#9CA3AF", marginTop: 6 },
+  restaurantName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111",
+  },
+
+  subInfo: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+
+  statusText: {
+    fontSize: 13,
+    marginTop: 4,
+    fontWeight: "700",
+  },
+
+  price: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111",
+  },
+
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

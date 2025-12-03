@@ -17,18 +17,11 @@ import { useRouter } from "expo-router";
 import { useCart } from "@/app/context/CartContext";
 import { useAddress } from "@/app/context/AddressContext";
 import DeliverTo from "@/components/DeliverTo";
-import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "@/lib/apiConfig";
 import { useAuth } from "@/app/context/AuthContext";
 
-/**
- * 👉 Callback URL cho mobile:
- * - Đây là URL mà backend sẽ redirect về sau khi xử lý xong VNPAY.
- * - Với mobile, bạn nên dùng deep link / expo link (ví dụ: myapp://payment-result)
- * - Tạm thời mình để HTTP local để bạn dễ test, bạn chỉnh lại cho phù hợp.
- */
-const MOBILE_CALLBACK_URL = "http://10.10.30.181:8081/checkout/result";
+const MOBILE_CALLBACK_URL = "http://172.20.10.3:8081/checkout/result";
 
 export default function CartScreen() {
   const router = useRouter();
@@ -53,32 +46,25 @@ export default function CartScreen() {
   const formatVND = (n: number) =>
     n.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
 
-  // ===================== CHECKOUT HANDLER =====================
+  // ===================== CHECKOUT =====================
   const checkout = async () => {
-    if (!receiver.trim()) {
-      return Alert.alert("Lỗi", "Vui lòng nhập tên người nhận");
-    }
-
+    if (!receiver.trim()) return Alert.alert("Lỗi", "Vui lòng nhập tên người nhận");
     const phoneRegex = /^[0-9]{9,11}$/;
     if (!phone.trim() || !phoneRegex.test(phone)) {
       return Alert.alert("Lỗi", "Số điện thoại phải từ 9 - 11 chữ số!");
     }
-
     if (!currentAddress?.trim()) {
       return Alert.alert("Lỗi", "Bạn cần chọn địa chỉ giao hàng!");
     }
-
     if (!currentLocation?.latitude || !currentLocation?.longitude) {
       return Alert.alert("Lỗi", "Không lấy được vị trí của bạn!");
     }
-
     if (!currentRestaurant) {
       return Alert.alert("Lỗi", "Không xác định được nhà hàng.");
     }
 
     try {
       setLoading(true);
-
       const orderId = Date.now().toString();
 
       const payload = {
@@ -88,27 +74,22 @@ export default function CartScreen() {
         customerPhone: phone.trim(),
         deliveryAddress: currentAddress,
         restaurantId: currentRestaurant,
-        note: "", // nếu muốn dùng note riêng, bạn có thể lấy thêm từ UI
-
-        // BE mong đợi "coords" và "route"
+        note: "",
         coords: {
           lat: Number(currentLocation.latitude),
           lng: Number(currentLocation.longitude),
         },
         route: [],
-
         items: currentCart.map((i) => ({
           price: i.price,
           quantity: i.quantity,
           notes: i.notes || "",
           dishId: i.dishId,
         })),
-
-        // cho mobile deep link hoặc URL web mà BE sẽ redirect về
         callbackUrl: MOBILE_CALLBACK_URL,
+        platform: Platform.OS === "web" ? "web" : "app",
       };
 
-      // 🔥 LƯU ĐƠN NHÁP VÀO ASYNCSTORAGE (CÁCH A)
       await AsyncStorage.setItem("draft_order", JSON.stringify(payload));
 
       const res = await fetch(`${API_URL}/api/vnpay/create`, {
@@ -117,51 +98,27 @@ export default function CartScreen() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error("Bad response");
-      }
-
+      if (!res.ok) throw new Error("Bad response");
       const json = await res.json();
 
-      if (!json.paymentUrl) {
+      // ❗ FIX: chỉ check paymentUrl nếu là WEB
+      if (Platform.OS === "web" && !json.paymentUrl) {
         return Alert.alert("Lỗi", "Không thể tạo giao dịch");
       }
 
-      // ============ WEB MODE ============
+      // =========================== WEB ===========================
       if (Platform.OS === "web") {
-        // với web, bạn có thể cho FE gọi thẳng VNP_RETURN_URL -> FRONTEND redirect
         window.location.href = json.paymentUrl;
         return;
       }
 
-      // ============ MOBILE MODE ============
-      const result = await WebBrowser.openAuthSessionAsync(
-        json.paymentUrl,
-        MOBILE_CALLBACK_URL
-      );
+      // ========================= APP MODE ========================
+      clearCart();
+      await AsyncStorage.removeItem("draft_order");
 
-      // result.type === "success" khi WebBrowser detect redirect về callbackUrl
-      if (result.type === "success" && result.url) {
-        const url = new URL(result.url);
-        const orderIdResult = url.searchParams.get("orderId");
-        const failed = url.searchParams.get("failed");
+      router.replace(`/checkout/success?orderId=${orderId}`);
+      return;
 
-        if (failed === "1") {
-          // thanh toán fail
-          router.replace("/checkout/failed");
-          return;
-        }
-
-        // thanh toán thành công
-        if (orderIdResult) {
-          clearCart();
-          await AsyncStorage.removeItem("draft_order");
-          router.replace(`/checkout/success?orderId=${orderIdResult}`);
-        } else {
-          // không có orderId → coi như thất bại
-          router.replace("/checkout/failed");
-        }
-      }
     } catch (err) {
       console.error("checkout error", err);
       Alert.alert("Lỗi", "Không thể kết nối hệ thống thanh toán.");
@@ -174,7 +131,6 @@ export default function CartScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.replace("/(tabs)")}>
             <Ionicons name="arrow-back" size={24} color="#333" />
@@ -187,43 +143,31 @@ export default function CartScreen() {
           <Text style={styles.empty}>Giỏ hàng trống</Text>
         ) : (
           <>
-            {/* Cart Items */}
             <FlatList
               data={currentCart}
               keyExtractor={(item) => item.id}
               contentContainerStyle={{ paddingBottom: 14 }}
               renderItem={({ item }) => (
                 <View style={styles.cartCard}>
-                  <Image
-                    source={{ uri: item.image }}
-                    style={styles.cartImg}
-                  />
-
+                  <Image source={{ uri: item.image }} style={styles.cartImg} />
                   <View style={{ flex: 1 }}>
                     <Text numberOfLines={2} style={styles.cartName}>
                       {item.name}
                     </Text>
-
                     <Text style={styles.cartPrice}>{formatVND(item.price)}</Text>
 
-                    {/* Notes */}
                     <TextInput
-                      placeholder="Thêm ghi chú (Không cay, ít đá...)"
+                      placeholder="Thêm ghi chú"
                       value={item.notes || ""}
                       onChangeText={(txt) => updateNote(item.dishId, txt)}
                       style={styles.noteInput}
-                      placeholderTextColor="#999"
                     />
 
-                    {/* Quantity */}
                     <View style={styles.qtyWrap}>
                       <Pressable
                         style={styles.qtyBtn}
                         onPress={() =>
-                          updateQuantity(
-                            item.dishId,
-                            Math.max(item.quantity - 1, 1)
-                          )
+                          updateQuantity(item.dishId, Math.max(item.quantity - 1, 1))
                         }
                       >
                         <Text style={styles.qtyBtnText}>−</Text>
@@ -242,7 +186,6 @@ export default function CartScreen() {
                     </View>
                   </View>
 
-                  {/* Remove */}
                   <Pressable
                     onPress={() => removeItem(item.dishId)}
                     style={styles.removeBtn}
@@ -253,7 +196,6 @@ export default function CartScreen() {
               )}
             />
 
-            {/* Delivery Info */}
             <Text style={styles.label}>Thông tin giao hàng</Text>
 
             <TextInput
@@ -281,7 +223,8 @@ export default function CartScreen() {
               </Pressable>
             </View>
 
-            {/* Total & Order */}
+          
+
             <View style={styles.footer}>
               <Text style={styles.total}>Tổng: {formatVND(totalPrice)}</Text>
 
@@ -301,7 +244,6 @@ export default function CartScreen() {
         )}
       </View>
 
-      {/* Address Modal */}
       <DeliverTo
         visible={showDeliveryModal}
         onClose={() => setShowDeliveryModal(false)}
@@ -311,29 +253,25 @@ export default function CartScreen() {
   );
 }
 
-/* ===================== STYLES ===================== */
-
+// ===================== STYLES =====================
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#fff" },
-
   container: {
     flex: 1,
     paddingHorizontal: 16,
     width: Platform.OS === "web" ? "70%" : "100%",
     maxWidth: Platform.OS === "web" ? 800 : "100%",
     alignSelf: Platform.OS === "web" ? "center" : "flex-start",
+    paddingTop: Platform.OS === "ios" ? 16 : 0,
   },
-
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginVertical: 16,
   },
-
   h1: { fontSize: 24, fontWeight: "900", color: "#FF6B35" },
   empty: { textAlign: "center", marginTop: 50, fontSize: 16, color: "#777" },
-
   cartCard: {
     flexDirection: "row",
     backgroundColor: "#fff",
@@ -353,16 +291,9 @@ const styles = StyleSheet.create({
         }),
     gap: 14,
   },
-
-  cartImg: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: "#f3f3f3",
-  },
-  cartName: { fontSize: 16, fontWeight: "700", color: "#222" },
+  cartImg: { width: 80, height: 80, borderRadius: 12 },
+  cartName: { fontSize: 16, fontWeight: "700" },
   cartPrice: { fontSize: 15, fontWeight: "600", color: "#FF6B35", marginTop: 3 },
-
   noteInput: {
     fontSize: 13,
     marginTop: 6,
@@ -373,7 +304,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fafafa",
   },
-
   qtyWrap: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 10 },
   qtyBtn: {
     width: 34,
@@ -386,9 +316,7 @@ const styles = StyleSheet.create({
   qtyBtnText: { fontSize: 20, fontWeight: "900", color: "#FF6B35" },
   qtyNum: { fontSize: 16, fontWeight: "700", width: 26, textAlign: "center" },
   removeBtn: { padding: 5 },
-
   label: { fontSize: 15, fontWeight: "700", marginTop: 10, marginBottom: 6 },
-
   input: {
     borderWidth: 1,
     borderColor: "#DDD",
@@ -396,9 +324,7 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     marginBottom: 10,
-    width: "100%",
   },
-
   addressBox: {
     borderWidth: 1,
     borderColor: "#DDD",
@@ -410,13 +336,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 10,
   },
+  addressText: { flex: 1, fontSize: 14 },
+  changeBtn: { color: "#FF6B35", fontWeight: "700" },
 
-  addressText: { flex: 1, fontSize: 14, color: "#222" },
-  changeBtn: { color: "#FF6B35", fontWeight: "700", marginLeft: 8 },
+  cancelBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#eee",
+    alignItems: "center",
+  },
+  cancelText: { fontSize: 15, fontWeight: "600", color: "#666" },
 
   footer: { marginTop: 10 },
   total: { fontSize: 18, fontWeight: "800", marginBottom: 12 },
-
   btn: {
     backgroundColor: "#FF6B35",
     paddingVertical: 14,

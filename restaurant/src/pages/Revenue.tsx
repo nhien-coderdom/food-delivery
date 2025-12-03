@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337").trim();
+const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://172.20.10.3:1337").trim();
 const NORMALIZED_API_URL = RAW_API_URL.replace(/\/+$/, "");
 const API_ROOT = NORMALIZED_API_URL.endsWith("/api") ? NORMALIZED_API_URL : `${NORMALIZED_API_URL}/api`;
 

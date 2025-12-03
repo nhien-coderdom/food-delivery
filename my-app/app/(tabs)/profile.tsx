@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Image } from "react-nati
 import { useUser, useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 export default function ProfileScreen() {
   const { user } = useUser();
   const { signOut } = useAuth();
@@ -18,6 +18,7 @@ export default function ProfileScreen() {
   };
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#FFF" }}>
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
@@ -92,21 +93,20 @@ export default function ProfileScreen() {
         <Text style={styles.version}>Version 1.0.0</Text>
       </View>
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FAFAFA",
+    backgroundColor: "#FFF",
   },
   header: {
     backgroundColor: "#FFF",
     paddingVertical: 40,
     paddingHorizontal: 20,
     alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
   },
   profileInfo: {
     alignItems: "center",

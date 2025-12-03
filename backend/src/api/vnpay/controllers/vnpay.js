@@ -16,7 +16,7 @@ function sortObject(obj) {
 
 module.exports = {
   // ======================================================
-  // B1: CREATE ORDER + ORDER ITEMS + PAYMENT URL
+  // B1: CREATE ORDER + ORDER ITEMS + PAYMENT URL (STRAPI v5)
   // ======================================================
   async create(ctx) {
     try {
@@ -32,6 +32,7 @@ module.exports = {
         coords,
         route,
         callbackUrl,
+        platform,
       } = ctx.request.body;
 
       if (!amount || !orderId || !restaurantId || !userId) {
@@ -39,29 +40,25 @@ module.exports = {
       }
 
       // ============================
-      // 0️⃣ LẤY DEPOT DRONE TỪ ENV
+      // 0️⃣ DRONE DEPOT
       // ============================
       const depot_lat = parseFloat(process.env.DEPOT_LAT || "0");
       const depot_lng = parseFloat(process.env.DEPOT_LNG || "0");
-
-      const drone_location = {
-        lat: depot_lat,
-        lng: depot_lng,
-      };
+      const drone_location = { lat: depot_lat, lng: depot_lng };
 
       // ============================
       // 1️⃣ CHECK EXIST ORDER
       // ============================
-      const existed = await strapi.db
-        .query("api::order.order")
-        .findOne({ where: { orderID: String(orderId) } });
+      const existed = await strapi.db.query("api::order.order").findOne({
+        where: { orderID: String(orderId) },
+      });
 
       if (existed) {
-        return ctx.send({ paymentUrl: existed.paymentUrl });
+        return ctx.send({ paymentUrl: existed.paymentUrl || null });
       }
 
       // ============================
-      // 2️⃣ TẠO ORDER
+      // 2️⃣ CREATE ORDER (STRAPI v5)
       // ============================
       const order = await strapi.entityService.create("api::order.order", {
         data: {
@@ -73,46 +70,70 @@ module.exports = {
           phoneNumber: customerPhone,
           deliveryAddress,
           note: note || "",
-          restaurant: restaurantId,
-          users_permissions_user: userId,
+
+          restaurant: {
+            connect: [{ id: restaurantId }],
+          },
+
+          users_permissions_user: {
+            connect: [{ id: userId }],
+          },
 
           customerLocation: coords || null,
           route: route || [],
           callbackUrl: callbackUrl || null,
 
-          // 🚀 LƯU DRONE TỪ ENV
           drone_location,
-
           publishedAt: new Date(),
         },
       });
 
       // ============================
-      // 3️⃣ TẠO ORDER ITEMS
+      // 3️⃣ TẠO ORDER ITEMS – CHUẨN v5
       // ============================
       if (Array.isArray(items)) {
-        for (const item of items) {
-          // ❗ BỎ QUA ITEM RÁC
-          if (!item.dishId || !item.price || !item.quantity) {
-            continue;
-          }
-
-          await strapi.entityService.create("api::order-item.order-item", {
-            data: {
-              order: order.id,        // không cần connect
-              dish: item.dishId,      // không cần connect
-              price: item.price,
-              quantity: item.quantity,
-              notes: item.notes || "",
-              publishedAt: new Date(),
-},
-          });
-        }
+        await Promise.all(
+          items.map((it) =>
+            strapi.entityService.create("api::order-item.order-item", {
+              data: {
+                order: {
+                  connect: [{ documentId: order.documentId }], // liên kết chuẩn v5
+                },
+                dish: {
+                  connect: [{ id: it.dishId }],
+                },
+                price: it.price,
+                quantity: it.quantity,
+                notes: it.notes || "",
+                publishedAt: new Date(),
+              },
+            })
+          )
+        );
       }
 
-      // ============================
-      // 4️⃣ TẠO LINK VNPAY
-      // ============================
+      // ======================================================
+      // 4️⃣ APP MODE (KHÔNG DÙNG VNPAY)
+      // ======================================================
+      if (platform === "ios" || platform === "android") {
+        await strapi.db.query("api::order.order").update({
+          where: { orderID: String(orderId) },
+          data: {
+            paymentStatus: "paid",
+            statusOrder: "confirmed",
+          },
+        });
+
+        return ctx.send({
+          autoPaid: true,
+          paymentUrl: null,
+          message: "App mode: order auto-paid",
+        });
+      }
+
+      // ======================================================
+      // 5️⃣ WEB → TẠO LINK THANH TOÁN VNPAY
+      // ======================================================
       let ipAddr = ctx.request.ip.includes("::1")
         ? "127.0.0.1"
         : ctx.request.ip;
@@ -177,31 +198,28 @@ module.exports = {
         .digest("hex");
 
       if (secureHash !== signed) {
-        return ctx.redirect(`${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=signature`);
+        return ctx.redirect(
+          `${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=signature`
+        );
       }
 
-      // ============================
-      // FIND ORDER
-      // ============================
       const order = await strapi.db.query("api::order.order").findOne({
         where: { orderID: String(query.vnp_TxnRef) },
       });
 
       if (!order) {
-        return ctx.redirect(`${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=order-not-found`);
+        return ctx.redirect(
+          `${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=order-not-found`
+        );
       }
 
       const orderId = order.orderID;
-      const callback = order.callbackUrl;
-
       const ua = ctx.request.header["user-agent"]?.toLowerCase() || "";
-      const isWeb = ua.includes("mozilla") || ua.includes("chrome") || ua.includes("safari");
+      const isWeb = ua.includes("mozilla");
 
-      const FRONTEND_WEB = process.env.FRONTEND_WEB_URL;
-      const FRONTEND_APP = callback || process.env.FRONTEND_APP_URL;
-// ============================
-      // PAYMENT SUCCESS
-      // ============================
+      const WEB = process.env.FRONTEND_WEB_URL;
+      const APP = process.env.FRONTEND_APP_URL;
+
       if (query.vnp_ResponseCode === "00") {
         await strapi.db.query("api::order.order").update({
           where: { orderID: orderId },
@@ -212,21 +230,23 @@ module.exports = {
           },
         });
 
-        if (isWeb)
-          return ctx.redirect(`${FRONTEND_WEB}/checkout/success?orderId=${orderId}`);
-        else
-          return ctx.redirect(`${FRONTEND_APP}/checkout/success?orderId=${orderId}`);
+        return ctx.redirect(
+          isWeb
+            ? `${WEB}/checkout/success?orderId=${orderId}`
+            : `${APP}/checkout/success?orderId=${orderId}`
+        );
       }
 
-      // FAIL
-      if (isWeb)
-        return ctx.redirect(`${FRONTEND_WEB}/checkout/fail?orderId=${orderId}`);
-      else
-        return ctx.redirect(`${FRONTEND_APP}/checkout/fail?orderId=${orderId}`);
-
+      return ctx.redirect(
+        isWeb
+          ? `${WEB}/checkout/fail?orderId=${orderId}`
+          : `${APP}/checkout/fail?orderId=${orderId}`
+      );
     } catch (err) {
       console.error("❌ RETURN error:", err);
-      return ctx.redirect(`${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=server`);
+      return ctx.redirect(
+        `${process.env.FRONTEND_WEB_URL}/checkout/fail?reason=server`
+      );
     }
   },
 

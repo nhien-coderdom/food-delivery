@@ -8,7 +8,7 @@ import DroneTestNative from "./drone-test.native";
 
 interface DroneTestProps {
   orderId: string;
-  order: any;     // 👈 PHẢI CÓ
+  order: any;    
 }
 
 export default function DroneTest(props: DroneTestProps) {

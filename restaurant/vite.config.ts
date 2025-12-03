@@ -8,7 +8,7 @@ export default defineConfig({
     // Proxy /api requests to backend to avoid CORS during development
     proxy: {
       '/api': {
-        target: 'http://10.10.30.182:1337',
+        target: 'http://172.20.10.3:1337',
         changeOrigin: true,
         secure: false,
         // keep the /api prefix so backend routes match

@@ -38,6 +38,7 @@
         "pending",
         "confirmed",
         "canceled",
+        "waitingDrone",
         "ready",
         "delivering",
         "delivered"
@@ -61,7 +62,7 @@
     "note": {
       "type": "string"
     },
-    "items": {
+    "order_items": {
       "type": "relation",
       "relation": "oneToMany",
       "target": "api::order-item.order-item",
@@ -78,6 +79,12 @@
     },
     "callbackUrl": {
       "type": "string"
+    },
+    "drone": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::drone.drone",
+      "inversedBy": "orders"
     }
   }
 }

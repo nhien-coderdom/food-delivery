@@ -21,7 +21,7 @@ export default function Index() {
   return (
     <View style={styles.container}>
       <Image 
-        source={require("../assets/images/react-logo.png")} 
+        source={require("../assets/images/logoFoodei.png")} 
         style={styles.logo}
         resizeMode="contain"
       />

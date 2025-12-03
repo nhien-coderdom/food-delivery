@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 // Normalise the API base so we never end up with duplicated /api segments.
-const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://10.10.30.182:1337").trim();
+const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://172.20.10.3:1337").trim();
 const NORMALIZED_API_URL = RAW_API_URL.replace(/\/+$/, "");
 const API_ROOT = NORMALIZED_API_URL.endsWith("/api") ? NORMALIZED_API_URL : `${NORMALIZED_API_URL}/api`;
 
@@ -728,80 +728,78 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   }, [managedRestaurants, selectedRestaurantId]);
 
   const handleUpdateOrderStatus = useCallback(async () => {
-    if (!resolvedToken) {
-      setApiError("Thiếu token xác thực.");
+  if (!resolvedToken) {
+    setApiError("Thiếu token xác thực.");
+    return;
+  }
+
+  if (!selectedOrder) return;
+
+  const updates: Record<string, unknown> = {};
+
+  if (statusDraft && statusDraft !== selectedOrder.status)
+    updates.statusOrder = statusDraft;
+
+  if (paymentDraft && paymentDraft !== selectedOrder.paymentStatus)
+    updates.paymentStatus = paymentDraft;
+
+  if (Object.keys(updates).length === 0) {
+    showFeedback("Không có thay đổi để lưu.");
+    return;
+  }
+
+  if ((updates as any).statusOrder === "delivered") {
+    showFeedback("Trạng thái 'Đã giao' chỉ do khách hàng xác nhận.");
+    return;
+  }
+
+  try {
+    setUpdatingOrderId(selectedOrder.id);
+    setApiError(null);
+
+    // 🚀 FIX ENDPOINT HERE
+    const response = await fetch(`${API_ROOT}/orders/manager/${selectedOrder.id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resolvedToken}`,
+      },
+      body: JSON.stringify({ data: updates }),
+    });
+
+    if (response.status === 401) {
+      handleAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
       return;
     }
 
-    if (!selectedOrder) {
-      return;
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error?.message ?? "Không thể cập nhật đơn hàng.");
     }
 
-    const updates: Record<string, unknown> = {};
+    // 🟩 FIX parse đúng data
+    const updatedOrder = mapOrder(result.data);
 
-    if (statusDraft && statusDraft !== selectedOrder.status) {
-      updates.statusOrder = statusDraft;
-    }
+    // 🟩 Update danh sách để UI thấy ngay
+    setOrders((prev) =>
+      prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
+    );
 
-    if (paymentDraft && paymentDraft !== selectedOrder.paymentStatus) {
-      updates.paymentStatus = paymentDraft;
-    }
+    setSelectedOrderId(updatedOrder.id);
 
-    if (Object.keys(updates).length === 0) {
-      showFeedback("Không có thay đổi để lưu.");
-      return;
-    }
+    showFeedback("Đã cập nhật đơn hàng.");
 
-    // Prevent restaurant users from marking an order as "delivered".
-    // "delivered" should be set by the customer confirming receipt.
-    if ((updates as any).statusOrder === "delivered") {
-      showFeedback("Trạng thái 'Đã giao' chỉ do khách hàng xác nhận.");
-      return;
-    }
+    // 🟩 REFRESH lại danh sách (silent)
+    const rid = updatedOrder?.restaurant?.id ?? selectedRestaurantId;
+    if (rid) fetchOrders(rid, { silent: true });
 
-    try {
-      setUpdatingOrderId(selectedOrder.id);
-      setApiError(null);
-
-      const response = await fetch(`${API_ROOT}/orders/${selectedOrder.id}/manager`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resolvedToken}`,
-        },
-        body: JSON.stringify({ data: updates }),
-      });
-
-      if (response.status === 401) {
-        handleAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
-        return;
-      }
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result?.error?.message ?? "Không thể cập nhật đơn hàng.");
-      }
-
-      const updatedOrder = mapOrder(result?.data ?? result);
-      setOrders((prev) => prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
-      setSelectedOrderId(updatedOrder.id);
-      showFeedback("Đã cập nhật đơn hàng.");
-      // Refresh list after update to reflect any server-side changes
-      try {
-        const targetRid = updatedOrder?.restaurant?.id ?? selectedRestaurantId;
-        if (typeof targetRid === "number" && Number.isFinite(targetRid)) {
-          fetchOrders(targetRid, { silent: true });
-        }
-      } catch (e) {
-        // ignore
-      }
-    } catch (error: any) {
-      setApiError(error?.message ?? "Có lỗi xảy ra khi cập nhật đơn hàng.");
-    } finally {
-      setUpdatingOrderId(null);
-    }
-  }, [paymentDraft, resolvedToken, selectedOrder, showFeedback, statusDraft]);
+  } catch (err: any) {
+    setApiError(err.message ?? "Có lỗi khi cập nhật đơn hàng.");
+  } finally {
+    setUpdatingOrderId(null);
+  }
+}, [paymentDraft, resolvedToken, selectedOrder, showFeedback, statusDraft]);
 
   const handleRefresh = useCallback(() => {
     if (typeof selectedRestaurantId !== "number" || !Number.isFinite(selectedRestaurantId)) {

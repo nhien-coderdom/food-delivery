@@ -4,9 +4,9 @@ import Constants from "expo-constants";
 /** 
  * 🔥 ĐỔI IP Ở ĐÂY DUY NHẤT
  * IP MÁY DEV của bạn (LAN)
- * Ví dụ: http://10.10.30.181/
+ * Ví dụ: http://172.20.10.3/
  */
-const LOCAL_IP = "http://10.10.30.181/";
+const LOCAL_IP = "http://172.20.10.3/";
 const DEFAULT_API = `http://${LOCAL_IP}:1337`;
 
 /**

@@ -1,0 +1,48 @@
+{
+  "kind": "collectionType",
+  "collectionName": "drones",
+  "info": {
+    "singularName": "drone",
+    "pluralName": "drones",
+    "displayName": "Drone",
+    "description": "Drone delivery simulation entity"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "droneID": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+
+    "droneLocation": {
+      "type": "json",
+      "required": true,
+      "default": {
+        "lat": 10.760596,
+        "lng": 106.681948
+      }
+    },
+
+    "orders": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::order.order",
+      "mappedBy": "drone"
+    },
+
+    "state": {
+      "type": "enumeration",
+      "required": true,
+      "enum": ["free", "busy", "error"],
+      "default": "free"
+    },
+
+    "isSimulating": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

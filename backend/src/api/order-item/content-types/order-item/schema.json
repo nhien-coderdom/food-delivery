@@ -9,18 +9,18 @@
   "options": {
     "draftAndPublish": true
   },
+  "pluginOptions": {},
   "attributes": {
     "order": {
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::order.order",
-      "inversedBy": "items"
+      "inversedBy": "order_items"
     },
     "dish": {
       "type": "relation",
       "relation": "manyToOne",
-      "target": "api::dish.dish",
-      "required": true
+      "target": "api::dish.dish"
     },
     "price": {
       "type": "decimal",

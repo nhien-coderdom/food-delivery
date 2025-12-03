@@ -2,12 +2,13 @@ import React from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 
+
 export default function Onboarding1() {
   const router = useRouter();
   return (
     <View style={styles.container}>
       <Image 
-        source={require("../../assets/images/react-logo.png")} 
+        source={require("../../assets/images/logoFoodei.png")} 
         style={styles.image}
         resizeMode="contain"
       />

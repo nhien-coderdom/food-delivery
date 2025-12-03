@@ -33,12 +33,6 @@
       "target": "api::dish.dish",
       "mappedBy": "restaurant"
     },
-    "categories": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::category.category",
-      "mappedBy": "restaurants"
-    },
     "orders": {
       "type": "relation",
       "relation": "oneToMany",
@@ -60,8 +54,8 @@
     "phone": {
       "type": "string",
       "minLength": 10,
-      "maxLength": 10,
-      "regex": "^0[0-9]{9}$"
+      "maxLength": 14,
+      "regex": "^(?:\\+?84\\s?)?(?:\\d{9,10}|(?:1800|1900)(?:\\s?\\d+)+)$"
     }
   }
 }

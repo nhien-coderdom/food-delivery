@@ -39,6 +39,7 @@ export interface CartContextType {
   updateNote: (dishId: number, notes: string) => void;
 
   clearCart: () => void;
+  clearCartByRestaurant: (restaurantId: number) => void;
   clearAllCarts: () => void;
   getItemQuantity: (dishId: number) => number;
 
@@ -173,14 +174,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // CLEAR CART BY RESTAURANT (for checkout success/deeplink)
+  const clearCartByRestaurant = (restaurantId: number) => {
+    if (!restaurantId) return;
+
+    setCarts((prev) => {
+      const clone = { ...prev };
+      delete clone[restaurantId];
+      return clone;
+    });
+
+    if (currentRestaurant === restaurantId) {
+      setCurrentRestaurant(null);
+      setCurrentRestaurantName(null);
+    }
+  };
+
   // CLEAR CART
   const clearCart = () => {
     if (currentRestaurant == null) return;
-    setCarts((prev) => {
-      const clone = { ...prev };
-      delete clone[currentRestaurant];
-      return clone;
-    });
+    clearCartByRestaurant(currentRestaurant);
   };
 
   const clearAllCarts = () => setCarts({});
@@ -259,6 +272,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updateQuantity,
         updateNote,
         clearCart,
+        clearCartByRestaurant,
         clearAllCarts,
         getItemQuantity,
         currentCart,

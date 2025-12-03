@@ -1,56 +1,59 @@
-// D:\food-delivery\backend\src\api\order\controllers\order.js
 "use strict";
-
 const { createCoreController } = require("@strapi/strapi").factories;
 
 module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   // ==================================================
-  // PUBLIC: Lấy order theo orderID (string UID)
   // GET /api/orders/by-order-id/:orderID
   // ==================================================
   async findByOrderID(ctx) {
     const orderID = ctx.params.orderID;
 
     try {
-      console.log('[order.findByOrderID] params:', ctx.params);
-
       const orders = await strapi.entityService.findMany("api::order.order", {
         filters: { orderID },
         populate: {
-          restaurant: true,
+          restaurant: {
+            populate: ["image"]
+          },
+          drone: true,
           users_permissions_user: true,
-          items: {
-            populate: ["dish"],
+          order_items: {
+            populate: {
+              dish: { populate: ["image"] },
+            },
           },
         },
         limit: 1,
       });
 
-      if (!orders.length) {
-        console.warn('[order.findByOrderID] not found for', orderID);
-        return ctx.notFound("Order not found");
-      }
+      if (!orders.length) return ctx.notFound("Order not found");
 
       return { data: orders[0] };
     } catch (err) {
-      console.error('[order.findByOrderID] error:', err);
-      // Return a 400 with error message for easier debugging (temporary)
-      return ctx.badRequest('Error fetching order', { detail: err.message || err });
+      console.error("findByOrderID error:", err);
+      return ctx.badRequest("Error fetching order");
     }
   },
 
   // ==================================================
-  // User lấy danh sách đơn
+  // USER orders list
   // ==================================================
   async find(ctx) {
     const { user } = ctx.state;
-    if (!user) return ctx.unauthorized("Bạn cần đăng nhập");
+    if (!user) return ctx.unauthorized("Login required");
 
     const orders = await strapi.entityService.findMany("api::order.order", {
       filters: { users_permissions_user: user.id },
       populate: {
-        restaurant: true,
-        items: { populate: ["dish"] },
+        restaurant: {
+            populate: ["image"]
+          },
+        drone: true,
+        order_items: {
+          populate: {
+            dish: { populate: ["image"] },
+          },
+        },
       },
       sort: { createdAt: "DESC" },
     });
@@ -59,28 +62,7 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   },
 
   // ==================================================
-  // User tạo đơn (nếu dùng flow không VNPAY)
-  // ==================================================
-  async create(ctx) {
-    const { user } = ctx.state;
-    if (!user) return ctx.unauthorized("Bạn cần đăng nhập");
-
-    const data = ctx.request.body;
-
-    const newOrder = await strapi.entityService.create("api::order.order", {
-      data: {
-        ...data,
-        users_permissions_user: user.id,
-        statusOrder: "pending",
-      },
-    });
-    const simulator = strapi.service("api::drone-simulator.drone-simulator");
-    simulator.simulate(strapi, newOrder);
-    return { data: newOrder };
-  },
-
-  // ==================================================
-  // Manager: lấy danh sách đơn theo restaurant
+  // MANAGER LIST ORDERS
   // ==================================================
   async managerFind(ctx) {
     const restaurantId = ctx.query.restaurantId;
@@ -89,9 +71,16 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     const orders = await strapi.entityService.findMany("api::order.order", {
       filters: { restaurant: restaurantId },
       populate: {
-        items: { populate: ["dish"] },
-        restaurant: true,
+        restaurant: {
+            populate: ["image"]
+          },
+        drone: true,
         users_permissions_user: true,
+        order_items: {
+          populate: {
+            dish: { populate: ["image"] },
+          },
+        },
       },
       sort: { createdAt: "DESC" },
     });
@@ -99,17 +88,21 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     return { data: orders };
   },
 
-  // ==================================================
-  // Manager xem chi tiết 1 đơn
-  // ==================================================
   async managerFindOne(ctx) {
     const id = ctx.params.id;
 
     const order = await strapi.entityService.findOne("api::order.order", id, {
       populate: {
-        items: { populate: ["dish"] },
-        restaurant: true,
+        restaurant: {
+            populate: ["image"]
+          },
+        drone: true,
         users_permissions_user: true,
+        order_items: {
+          populate: {
+            dish: { populate: ["image"] },
+          },
+        },
       },
     });
 
@@ -119,83 +112,198 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
   },
 
   // ==================================================
-  // Manager cập nhật đơn + trigger drone simulator
-  // PUT /api/orders/manager/:id
+  // MANAGER UPDATE ORDER
   // ==================================================
   async managerUpdate(ctx) {
     const id = ctx.params.id;
 
-    const incoming = ctx.request?.body?.data ?? ctx.request?.body ?? {};
+    // ⭐ BODY FIX — luôn luôn đọc đúng JSON từ FE
+    const body = ctx.request.body?.data ?? ctx.request.body ?? {};
+    console.log("📦 Body received:", body);
 
     const allowed = {};
 
-    if (typeof incoming.statusOrder !== "undefined") {
-      allowed.statusOrder = incoming.statusOrder;
-    }
+    // ⭐ CHỈ GÁN NẾU FE GỬI LÊN
+    if ("statusOrder" in body) allowed.statusOrder = body.statusOrder;
+    if ("paymentStatus" in body) allowed.paymentStatus = body.paymentStatus;
+    if ("note" in body) allowed.note = body.note;
 
-    if (typeof incoming.note !== "undefined") {
-      allowed.note = incoming.note;
-    }
-
-    if (typeof incoming.paymentStatus !== "undefined") {
-      console.warn(
-        `[WARN] Ignoring paymentStatus update attempt by manager for Order ${id}`
-      );
-    }
-
+    // ⭐ Update + populate ĐỦ CHUẨN FE CẦN
     const updated = await strapi.entityService.update("api::order.order", id, {
       data: allowed,
+      populate: {
+        restaurant: {
+            populate: ["image"]
+          },
+        drone: true,
+        users_permissions_user: true,
+        order_items: {
+          populate: {
+            dish: {
+              populate: ["image"],
+            },
+          },
+        },
+      },
     });
 
-    // Nếu đơn được confirm => mô phỏng drone
-    if (allowed.statusOrder === "confirmed") {
-      try {
-        const droneSimulator = require("../../drone-simulator/services/drone-simulator");
-        droneSimulator.simulate(strapi, updated);
-      } catch (err) {
-        console.error("Drone simulator error:", err);
+    console.log("✅ Updated order:", updated.orderID, updated.statusOrder);
+
+    // ⭐ Gửi realtime
+    if (strapi.io) {
+      strapi.io.emit("order:update", {
+        orderID: updated.orderID,
+        statusOrder: updated.statusOrder,
+        paymentStatus: updated.paymentStatus,
+        drone: updated.drone,
+      });
+    }
+
+    // ==================================================
+    // 🚁 AUTO START DRONE KHI READY
+    // ==================================================
+    if (allowed.statusOrder === "ready") {
+      console.log("🚀 Auto-start drone (READY) for order", updated.orderID);
+
+      // Lấy lại order đầy đủ (restaurant + drone)
+      let order = await strapi.entityService.findOne("api::order.order", id, {
+        populate: ["restaurant", "drone"],
+      });
+
+      let drone = order.drone;
+
+      // --------------------------------------------------
+      // Assign drone nếu chưa có
+      // --------------------------------------------------
+      if (!drone) {
+        drone = await strapi.db.query("api::drone.drone").findOne({
+          where: { state: "free" },
+        });
+
+        if (!drone) {
+          console.log("❌ Không có drone rảnh");
+          return { data: updated };
+        }
+
+        // Gán drone cho order, KHÔNG đổi status (vẫn ready)
+        await strapi.db.query("api::order.order").update({
+          where: { id },
+          data: { drone: drone.id },
+        });
+
+        // Reload order để có drone populate
+        order = await strapi.entityService.findOne("api::order.order", id, {
+          populate: ["restaurant", "drone"],
+        });
       }
+
+      // Reload drone để lấy isSimulating
+      const realDrone = await strapi.entityService.findOne(
+        "api::drone.drone",
+        order.drone.id
+      );
+
+      if (realDrone.isSimulating) {
+        console.log("⛔ Drone đang chạy → Không chạy lại");
+        return { data: updated };
+      }
+
+      console.log("🔥 Bắt đầu mô phỏng drone từ READY");
+      const sim = strapi.service("api::drone.drone");
+      sim.simulate(strapi, realDrone, order);
     }
 
     return { data: updated };
   },
 
   // ==================================================
-  // Khách xác nhận đơn đã nhận hàng
+  // CUSTOMER CONFIRM DELIVERED
   // ==================================================
   async customerConfirm(ctx) {
-    const { user } = ctx.state;
-    if (!user) return ctx.unauthorized("Bạn cần đăng nhập");
+  const id = ctx.params.id;
 
-    const id = ctx.params.id;
+  const order = await strapi.entityService.findOne("api::order.order", id, {
+    populate: ["drone"],
+  });
 
-    const order = await strapi.entityService.findOne("api::order.order", id, {
-      populate: { users_permissions_user: true },
+  if (!order) return ctx.notFound("Order not found");
+
+  // 1. Mark delivered
+  const updated = await strapi.entityService.update("api::order.order", id, {
+    data: { statusOrder: "delivered" },
+  });
+
+  // 2. Bắt drone bay về kho
+  if (order.drone) {
+    const droneService = strapi.service("api::drone.drone");
+    droneService.returnToWarehouse(strapi, order.drone, order);
+  }
+
+  if (strapi.io) {
+    strapi.io.emit("order:update", {
+      orderID: updated.orderID,
+      statusOrder: "delivered",
+    });
+  }
+
+  return { data: updated };
+},
+
+
+  // ==================================================
+  // MANUAL DRONE TRIGGER
+  // ==================================================
+  async triggerDrone(ctx) {
+    const { orderId } = ctx.params;
+
+    let order = await strapi.db.query("api::order.order").findOne({
+      where: { orderID: orderId },
+      populate: { restaurant: true, drone: true },
     });
 
     if (!order) return ctx.notFound("Order not found");
 
-    if (order.users_permissions_user.id !== user.id) {
-      return ctx.unauthorized("Bạn không sở hữu đơn hàng này");
-    }
+    // 👉 Trigger thủ công CHỈ khi order đang ở trạng thái "ready"
+    if (order.statusOrder !== "ready")
+      return ctx.badRequest("Order is not ready");
 
-    // Cập nhật trạng thái
-    const updated = await strapi.entityService.update(
-      "api::order.order",
-      id,
-      {
-        data: { statusOrder: "delivered" },
-      }
-    );
+    let drone = order.drone;
 
-    // Emit socket realtime
-    if (strapi.io) {
-      strapi.io.emit("orderDelivered", {
-        orderId: updated.id,
-        status: "delivered",
+    if (!drone) {
+      drone = await strapi.db.query("api::drone.drone").findOne({
+        where: { state: "free" },
       });
+
+      if (!drone) return ctx.badRequest("No drone available");
+
+      await strapi.db.query("api::order.order").update({
+        where: { id: order.id },
+        data: { drone: drone.id },
+      });
+
+      order = await strapi.entityService.findOne(
+        "api::order.order",
+        order.id,
+        {
+          populate: ["restaurant", "drone"],
+        }
+      );
     }
 
-    return { data: updated };
+    const droneFull = await strapi.entityService.findOne(
+      "api::drone.drone",
+      drone.id
+    );
+    if (droneFull.isSimulating) {
+      return ctx.send({ message: "Drone already running" });
+    }
+
+    const droneService = strapi.service("api::drone.drone");
+    droneService.simulate(strapi, droneFull, order);
+
+    return ctx.send({
+      message: "Drone started",
+      droneID: order.drone.droneID,
+    });
   },
 }));

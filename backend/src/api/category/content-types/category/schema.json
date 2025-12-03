@@ -20,12 +20,6 @@
       "target": "api::dish.dish",
       "mappedBy": "category"
     },
-    "restaurants": {
-      "type": "relation",
-      "relation": "manyToMany",
-      "target": "api::restaurant.restaurant",
-      "inversedBy": "categories"
-    },
     "icon": {
       "type": "string"
     }

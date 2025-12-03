@@ -10,5 +10,22 @@ module.exports = {
         auth: false,
       },
     },
+    {
+      method: "POST",
+      path: "/orders/trigger-drone/:orderID",
+      handler: "order.triggerDrone",
+      config: { auth: false },   // hoặc auth: true tùy bạn
+    },
+    {
+      method: "GET",
+      path: "/orders",
+      handler: "order.find",
+      config: {
+        auth: {
+          scope: ["api::order.order.find"],
+        },
+      },
+    },
+
   ],
 };
