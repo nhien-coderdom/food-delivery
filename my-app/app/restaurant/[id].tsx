@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Pressable,
-  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { API_URL, getImageUrl } from "@/lib/apiConfig";
@@ -18,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/app/context/AuthContext";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-/* ------------------ TYPES ------------------ */
+/* TYPES */
 
 interface Category {
   id: number;
@@ -38,16 +37,12 @@ interface Restaurant {
   id: number;
   documentId: string;
   name: string;
-  description?: string | null;
   address?: string | null;
-  phone?: string | null;
   image?: { url: string };
   dishes?: Dish[];
   rating?: number;
   deliveryFee?: number;
   deliveryTime?: number;
-  openingHours?: string;
-  closingHours?: string;
 }
 
 interface CategoryChip {
@@ -59,18 +54,21 @@ interface CategoryChip {
 const formatVND = (num: number) =>
   num?.toLocaleString("vi-VN", { style: "currency", currency: "VND" });
 
-/* ------------------ MAIN COMPONENT ------------------ */
-
 export default function RestaurantDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [selectedCat, setSelectedCat] = useState("all");
   const [loading, setLoading] = useState(true);
+
   const { jwt } = useAuth();
   const { addItem, updateQuantity, selectRestaurant, currentCart } = useCart();
 
-  /* FETCH RESTAURANT */
+  /* Pagination */
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 3;
+
+  /* FETCH */
   useEffect(() => {
     async function fetchRestaurant() {
       try {
@@ -102,28 +100,18 @@ export default function RestaurantDetail() {
     if (jwt) fetchRestaurant();
   }, [id, jwt]);
 
-  if (loading) {
-    return (
-      <ActivityIndicator
-        style={{ marginTop: 80 }}
-        size="large"
-        color="#FF6B35"
-      />
-    );
-  }
+  if (loading) return <ActivityIndicator style={{ marginTop: 80 }} size="large" color="#FF6B35" />;
 
-  if (!restaurant) {
+  if (!restaurant)
     return (
       <SafeAreaView style={styles.center}>
         <Text>Không tìm thấy nhà hàng.</Text>
       </SafeAreaView>
     );
-  }
 
-  /* SAFE DISHES */
   const dishes: Dish[] = restaurant.dishes ?? [];
 
-  /* BUILD CATEGORIES SAFE */
+  /* CATEGORIES */
   const categories: CategoryChip[] = [
     { id: "all", name: "Tất cả" },
     ...Array.from(
@@ -132,29 +120,30 @@ export default function RestaurantDetail() {
           .filter((d) => d.category?.documentId)
           .map((d) => [
             d.category!.documentId,
-            {
-              id: d.category!.documentId,
-              name: d.category!.name,
-            } as CategoryChip,
+            { id: d.category!.documentId, name: d.category!.name },
           ])
       ).values()
     ),
   ];
 
-  /* FILTER DISHES */
   const filteredDishes =
     selectedCat === "all"
       ? dishes
       : dishes.filter((d) => d.category?.documentId === selectedCat);
 
-  /* ------------------ RENDER ------------------ */
+  /* PAGINATION LOGIC */
+  const totalPages = Math.ceil(filteredDishes.length / ITEMS_PER_PAGE);
 
+  const paginatedDishes = filteredDishes.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE
+  );
+
+  /* RENDER */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-
       <ScrollView contentContainerStyle={styles.body}>
-
-        {/* HEADER LOGO */}
+        {/* HEADER */}
         <View style={styles.headerWrapper}>
           <Image
             source={{ uri: getImageUrl(restaurant.image?.url) }}
@@ -162,31 +151,26 @@ export default function RestaurantDetail() {
             resizeMode="contain"
           />
 
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#111" />
           </Pressable>
         </View>
 
-        {/* NAME */}
         <Text style={styles.title}>{restaurant.name}</Text>
 
-        {/* INFO BADGES */}
         <View style={styles.infoRow}>
           <View style={styles.iconBadge}>
             <Ionicons name="star" size={14} color="#FFB800" />
             <Text style={styles.infoText}>{restaurant.rating ?? "N/A"}</Text>
           </View>
+
           <View style={styles.iconBadge}>
             <Ionicons name="bicycle" size={14} color="#10B981" />
             <Text style={styles.infoText}>
-              {restaurant.deliveryFee
-                ? formatVND(restaurant.deliveryFee)
-                : "Free"}
+              {restaurant.deliveryFee ? formatVND(restaurant.deliveryFee) : "Free"}
             </Text>
           </View>
+
           <View style={styles.iconBadge}>
             <Ionicons name="time-outline" size={14} color="#6B7280" />
             <Text style={styles.infoText}>
@@ -195,7 +179,6 @@ export default function RestaurantDetail() {
           </View>
         </View>
 
-        {/* ADDRESS */}
         {restaurant.address && (
           <View style={styles.detailRow}>
             <Ionicons name="location" size={16} color="#6B7280" />
@@ -213,11 +196,11 @@ export default function RestaurantDetail() {
           {categories.map((cat) => (
             <Pressable
               key={cat.id}
-              onPress={() => setSelectedCat(cat.id)}
-              style={[
-                styles.chip,
-                selectedCat === cat.id && styles.chipActive,
-              ]}
+              onPress={() => {
+                setSelectedCat(cat.id);
+                setPage(1);
+              }}
+              style={[styles.chip, selectedCat === cat.id && styles.chipActive]}
             >
               <Text
                 style={[
@@ -231,9 +214,9 @@ export default function RestaurantDetail() {
           ))}
         </ScrollView>
 
-        {/* LIST OF DISHES */}
-        <View style={styles.grid }>
-          {filteredDishes.map((dish) => {
+        {/* LIST ROW UI (NHƯ BAN ĐẦU) */}
+        <View style={{ width: "100%" }}>
+          {paginatedDishes.map((dish) => {
             const imgUrl = getImageUrl(dish.image?.url);
             const qty =
               currentCart?.find((it) => it.dishId === dish.id)?.quantity ?? 0;
@@ -244,12 +227,8 @@ export default function RestaurantDetail() {
 
                 <View style={styles.rowMiddle}>
                   <Text style={styles.rowTitle}>{dish.name}</Text>
-                  <Text style={styles.rowSubtitle}>
-                    {dish.category?.name ?? ""}
-                  </Text>
-                  <Text style={styles.rowFinalPrice}>
-                    {formatVND(dish.price)}
-                  </Text>
+                  <Text style={styles.rowSubtitle}>{dish.category?.name ?? ""}</Text>
+                  <Text style={styles.rowFinalPrice}>{formatVND(dish.price)}</Text>
                 </View>
 
                 {/* BUTTONS */}
@@ -294,16 +273,37 @@ export default function RestaurantDetail() {
             );
           })}
         </View>
+
+        {/* PAGINATION BUTTONS */}
+        {totalPages > 1 && (
+          <View style={styles.paginationContainer}>
+            <Pressable
+              onPress={() => page > 1 && setPage(page - 1)}
+              style={[styles.pageBtn, page === 1 && styles.pageBtnDisabled]}
+            >
+              <Text style={styles.pageBtnText}>Trước</Text>
+            </Pressable>
+
+            <Text style={styles.pageNumber}>
+              Trang {page}/{totalPages}
+            </Text>
+
+            <Pressable
+              onPress={() => page < totalPages && setPage(page + 1)}
+              style={[styles.pageBtn, page === totalPages && styles.pageBtnDisabled]}
+            >
+              <Text style={styles.pageBtnText}>Sau</Text>
+            </Pressable>
+          </View>
+        )}
       </ScrollView>
 
-      {/* FIXED CART BAR */}
       <CartBar />
-
     </SafeAreaView>
   );
 }
 
-/* ------------------ STYLES ------------------ */
+/* STYLES (GIỮ Y NGUYÊN UI GỐC) */
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
@@ -333,7 +333,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "700", marginTop: 10 },
 
   infoRow: { flexDirection: "row", gap: 12, marginTop: 6 },
+
   iconBadge: { flexDirection: "row", gap: 4, alignItems: "center" },
+
   infoText: { fontSize: 13, color: "#4B5563" },
 
   detailRow: {
@@ -342,6 +344,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
+
   detailText: { fontSize: 13, color: "#6B7280", flex: 1 },
 
   chip: {
@@ -350,12 +353,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     borderRadius: 22,
   },
+
   chipActive: { backgroundColor: "#FF6B35" },
   chipText: { fontSize: 14, color: "#4B5563" },
   chipTextActive: { color: "#fff" },
 
-  grid: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
-
+  /* ROW UI ORIGINAL */
   rowCard: {
     flexDirection: "row",
     paddingVertical: 18,
@@ -410,4 +413,28 @@ const styles = StyleSheet.create({
   qtyText: { fontSize: 18, fontWeight: "700", color: "#FF6B35" },
 
   qtyNumber: { minWidth: 24, textAlign: "center", fontSize: 15 },
+
+  /* PAGINATION */
+  paginationContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+    gap: 16,
+  },
+
+  pageBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: "#FF6B35",
+    borderRadius: 12,
+  },
+
+  pageBtnDisabled: {
+    backgroundColor: "#e5e7eb",
+  },
+
+  pageBtnText: { color: "#fff", fontWeight: "600" },
+
+  pageNumber: { fontSize: 15, fontWeight: "600" },
 });
