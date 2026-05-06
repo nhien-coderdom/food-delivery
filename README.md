@@ -89,7 +89,3 @@ Trang web sẽ chạy tại: `http://localhost:5173`
   - Tối ưu hóa hình ảnh tự động.
   - Phân quyền người dùng chi tiết.
 
----
-
-## 📝 Giấy phép
-Dự án được phát triển cho mục đích học tập và thực hành.
