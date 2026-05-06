@@ -27,7 +27,7 @@ function getStatusMeta(statusRaw: string) {
     case "confirmed": return { label: "Đã xác nhận", color: "#F97316" };
     case "ready": return { label: "Sẵn sàng", color: "#0EA5E9" };
     case "delivering": return { label: "Đang giao", color: "#16A34A" };
-    case "delivered": return { label: "Đã giao", color: "#16A34A" };
+    case "delivered": return { label: "Đã giao", color: "#8D8686" };
     case "canceled":
     case "cancel": return { label: "Đã huỷ", color: "#DC2626" };
     default: return { label: statusRaw, color: "#6B7280" };

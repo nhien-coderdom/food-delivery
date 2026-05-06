@@ -38,8 +38,8 @@ export default function SuccessScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { clearCartByRestaurant } = useCart();
-// Popup xác nhận
-const [showModal, setShowModal] = useState(false);
+  // Popup xác nhận
+  const [showModal, setShowModal] = useState(false);
 
   const orderId = String(params.orderId || params.vnp_TxnRef || "");
 
@@ -76,10 +76,10 @@ const [showModal, setShowModal] = useState(false);
 
 
   useEffect(() => {
-  if (orderStatus === "delivering") {
-    setShowModal(true);
-  }
-}, [orderStatus]);
+    if (orderStatus === "delivering") {
+      setShowModal(true);
+    }
+  }, [orderStatus]);
 
   // ================================
   // CLEAR CART
@@ -121,12 +121,10 @@ const [showModal, setShowModal] = useState(false);
     });
 
     socket.on("drone:arrived", (data) => {
-      if (String(data.orderID) === orderId) {
-        console.log("🚁 ");
-      }
+      setShowModal(true);
     });
 
-    return () => {socket.disconnect()};
+    return () => { socket.disconnect() };
   }, [orderId, status]);
 
   // ================================
@@ -173,7 +171,7 @@ const [showModal, setShowModal] = useState(false);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      
+
 
       <ScrollView style={styles.container}>
         <Pressable onPress={() => router.push("/(tabs)")}>
@@ -220,27 +218,38 @@ const [showModal, setShowModal] = useState(false);
       </ScrollView>
 
       {showModal && (
-  <View style={styles.modalOverlay}>
+  <View
+    style={styles.modalOverlay}
+    pointerEvents="auto"   // CHẶN toàn bộ sự kiện dưới
+  >
     <View style={styles.modalBox}>
       <Text style={styles.modalTitle}>Xác nhận đã nhận hàng?</Text>
       <Text style={styles.modalText}>
         Bạn đã nhận hàng từ drone chưa?
       </Text>
 
+      {/* Button rõ ràng hơn */}
       <Pressable
-        style={[styles.modalBtn, { backgroundColor: "#FFFFFF", marginTop: 10 }]}
+        style={styles.confirmBtn}
         onPress={() => {
-          setShowModal(false);
           confirmDelivered();
+          setShowModal(false);
         }}
       >
-        <Text style={[styles.modalBtnText, { color: "black" }]}>
-          Đã nhận hàng
-        </Text>
+        <Text style={styles.confirmBtnText}>ĐÃ NHẬN HÀNG</Text>
+      </Pressable>
+
+      {/* Nút hủy (optional) */}
+      <Pressable
+        style={styles.cancelBtn}
+        onPress={() => setShowModal(false)}
+      >
+        <Text style={styles.cancelBtnText}>Chưa nhận</Text>
       </Pressable>
     </View>
   </View>
 )}
+
     </SafeAreaView>
   );
 }
@@ -422,55 +431,84 @@ const styles = StyleSheet.create({
   },
   stepTextActive: { color: "#FF6B35", fontWeight: "700" },
   modalOverlay: {
-  position: "absolute",
-  left: 0,
-  top: 0,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 999,
+  },
+
+  modalBox: {
+    width: "80%",
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 12,
+    elevation: 10,
+  },
+
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+
+  modalText: {
+    fontSize: 14,
+    color: "#555",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginHorizontal: 5,
+  },
+
+  modalBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+confirmBtn: {
   width: "100%",
-  height: "100%",
-  backgroundColor: "rgba(0,0,0,0.4)",
-  justifyContent: "center",
+  backgroundColor: "#FF6B35",
+  paddingVertical: 14,
+  borderRadius: 10,
   alignItems: "center",
-  zIndex: 999,
-},
-
-modalBox: {
-  width: "80%",
-  backgroundColor: "#fff",
-  padding: 20,
-  borderRadius: 12,
-  elevation: 10,
-},
-
-modalTitle: {
-  fontSize: 18,
-  fontWeight: "700",
-  marginBottom: 10,
-  textAlign: "center",
-},
-
-modalText: {
-  fontSize: 14,
-  color: "#555",
-  textAlign: "center",
-  marginBottom: 20,
-},
-
-modalButtons: {
-  flexDirection: "row",
-  justifyContent: "space-between",
   marginTop: 10,
 },
 
-modalBtn: {
-  flex: 1,
+confirmBtnText: {
+  color: "#fff",
+  fontSize: 16,
+  fontWeight: "700",
+},
+
+cancelBtn: {
+  width: "100%",
+  backgroundColor: "#DDD",
   paddingVertical: 12,
   borderRadius: 10,
   alignItems: "center",
-  marginHorizontal: 5,
+  marginTop: 8,
 },
 
-modalBtnText: {
-  fontSize: 15,
+cancelBtnText: {
+  color: "#333",
+  fontSize: 14,
   fontWeight: "600",
 },
 

@@ -1,5 +1,7 @@
+// FULL UPDATED ORDER MANAGEMENT CODE WILL BE HERE
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import DroneTestWeb from "../components/drone-test-web";
 
 // Normalise the API base so we never end up with duplicated /api segments.
 const RAW_API_URL = (import.meta.env.VITE_API_URL ?? "http://172.20.10.3:1337").trim();
@@ -32,8 +34,12 @@ type OrderItem = {
   price: number;
   subtotal: number;
 };
+export type LocationJSON = {
+  lat: number;
+  lng: number;
+} | null;
 
-type Order = {
+export type Order = {
   id: number;
   code: string;
   total: number;
@@ -43,9 +49,15 @@ type Order = {
   phoneNumber: string;
   createdAt: string;
   updatedAt: string;
-  restaurant: { id: number | null; name: string };
+  restaurant: {
+    id: number | null;
+    name: string;
+    location: LocationJSON;
+  };
   customer: CustomerInfo;
   items: OrderItem[];
+  customerLocation: LocationJSON;
+  route: Array<{ lat: number, lng: number }> | null;
 };
 
 type ManagedRestaurant = {
@@ -139,7 +151,7 @@ const searchControlStyle: CSSProperties = {
   ...baseControlStyle,
   paddingLeft: 36,
   backgroundImage:
-    "url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke-width=\'1.5\' stroke=\'%23ff6f2c\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M15.75 15.75L21 21M18 10.5a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z\'/%3E%3C/svg%3E')",
+    "url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke-width=\'1.5\' stroke=\'%23ff6f2c\' %3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M15.75 15.75L21 21M18 10.5a7.5 7.5 0 11-15 0 7.5 7.5 0 0115 0z\'/%3E%3C/svg%3E')",
   backgroundSize: "18px",
   backgroundPosition: "12px center",
   backgroundRepeat: "no-repeat",
@@ -215,6 +227,18 @@ const mapOrderItem = (raw: any): OrderItem | null => {
   };
 };
 
+const parseLocation = (value: any): { lat: number; lng: number } | null => {
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof value.lat === "number" &&
+    typeof value.lng === "number"
+  ) {
+    return { lat: value.lat, lng: value.lng };
+  }
+  return null;
+};
+
 const mapOrder = (raw: any): Order => {
   const attributesSource = raw?.attributes && typeof raw.attributes === "object" ? raw.attributes : raw;
   const attributes = (attributesSource ?? {}) as Record<string, unknown>;
@@ -236,24 +260,26 @@ const mapOrder = (raw: any): Order => {
   const createdAt = typeof attributes?.createdAt === "string" ? attributes.createdAt : "";
   const updatedAt = typeof attributes?.updatedAt === "string" ? attributes.updatedAt : createdAt;
 
+
   const restaurantEntry = ensureRelationEntry(attributes?.restaurant);
   const restaurantAttributes = (restaurantEntry?.attributes ?? restaurantEntry ?? {}) as Record<string, unknown>;
   const restaurantIdValue = restaurantEntry?.id ?? restaurantAttributes.id;
   const restaurantName = typeof restaurantAttributes?.name === "string" ? restaurantAttributes.name : "Nhà hàng";
-
+  const restaurantLocation = parseLocation(restaurantAttributes?.location);
+  const customerLocation = parseLocation(attributes?.customerLocation);
   const userEntry = ensureRelationEntry(attributes?.users_permissions_user);
   const userAttributes = (userEntry?.attributes ?? userEntry ?? {}) as Record<string, unknown>;
   const userIdValue = userEntry?.id ?? userAttributes.id;
   const customerName = typeof userAttributes?.fullName === "string" && userAttributes.fullName
     ? userAttributes.fullName
     : typeof userAttributes?.name === "string" && userAttributes.name
-    ? userAttributes.name
-    : typeof userAttributes?.email === "string" ? userAttributes.email : "Khách hàng";
+      ? userAttributes.name
+      : typeof userAttributes?.email === "string" ? userAttributes.email : "Khách hàng";
   const customerEmail = typeof userAttributes?.email === "string" ? userAttributes.email : "";
   const customerPhone = typeof userAttributes?.phone === "string" && userAttributes.phone
     ? userAttributes.phone
     : phoneNumber;
-
+  const route = attributes?.route;
   const itemsContainer = attributes?.order_items ?? (raw as any)?.order_items ?? [];
   let itemEntries: any[] = [];
   if (Array.isArray(itemsContainer?.data)) {
@@ -283,6 +309,7 @@ const mapOrder = (raw: any): Order => {
     restaurant: {
       id: Number.isFinite(Number(restaurantIdValue)) ? Number(restaurantIdValue) : null,
       name: restaurantName,
+      location: restaurantLocation,
     },
     customer: {
       id: Number.isFinite(Number(userIdValue)) ? Number(userIdValue) : null,
@@ -291,6 +318,8 @@ const mapOrder = (raw: any): Order => {
       phone: customerPhone,
     },
     items,
+    customerLocation,
+    route: Array.isArray(route) ? route.map(parseLocation).filter((loc): loc is { lat: number; lng: number } => loc !== null) : null,
   };
 };
 
@@ -346,6 +375,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
     }
   }, [userProp]);
 
+  
   const managerId = useMemo(() => extractManagerId(resolvedUser), [resolvedUser]);
 
   const [managedRestaurants, setManagedRestaurants] = useState<ManagedRestaurant[]>([]);
@@ -361,7 +391,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   const [statusDraft, setStatusDraft] = useState<OrderStatus | null>(null);
   const [paymentDraft, setPaymentDraft] = useState<PaymentStatus | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
-
+  const [showDroneTracking, setShowDroneTracking] = useState(false);
   // Realtime (polling)
   const POLLING_DEFAULT_MS = 5000;
   const pollingRef = useRef<number | null>(null);
@@ -376,6 +406,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
     setSelectedRestaurantId(null);
     setOrders([]);
     setSelectedOrderId(null);
+    setShowDroneTracking(false);
   }, []);
 
   useEffect(() => {
@@ -617,9 +648,9 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
     tick();
 
     const onVisibility = () => {
-        if (!document.hidden) {
-          tick();
-        }
+      if (!document.hidden) {
+        tick();
+      }
     };
 
     document.addEventListener("visibilitychange", onVisibility);
@@ -662,7 +693,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
       setPaymentDraft(null);
       return;
     }
-
+    console.log('Selected order changed:', selectedOrder);
     setStatusDraft(selectedOrder.status);
     setPaymentDraft(selectedOrder.paymentStatus);
   }, [selectedOrder]);
@@ -728,78 +759,121 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   }, [managedRestaurants, selectedRestaurantId]);
 
   const handleUpdateOrderStatus = useCallback(async () => {
-  if (!resolvedToken) {
-    setApiError("Thiếu token xác thực.");
-    return;
-  }
-
-  if (!selectedOrder) return;
-
-  const updates: Record<string, unknown> = {};
-
-  if (statusDraft && statusDraft !== selectedOrder.status)
-    updates.statusOrder = statusDraft;
-
-  if (paymentDraft && paymentDraft !== selectedOrder.paymentStatus)
-    updates.paymentStatus = paymentDraft;
-
-  if (Object.keys(updates).length === 0) {
-    showFeedback("Không có thay đổi để lưu.");
-    return;
-  }
-
-  if ((updates as any).statusOrder === "delivered") {
-    showFeedback("Trạng thái 'Đã giao' chỉ do khách hàng xác nhận.");
-    return;
-  }
-
-  try {
-    setUpdatingOrderId(selectedOrder.id);
-    setApiError(null);
-
-    // 🚀 FIX ENDPOINT HERE
-    const response = await fetch(`${API_ROOT}/orders/manager/${selectedOrder.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resolvedToken}`,
-      },
-      body: JSON.stringify({ data: updates }),
-    });
-
-    if (response.status === 401) {
-      handleAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
+    if (!resolvedToken) {
+      setApiError("Thiếu token xác thực.");
       return;
     }
 
-    const result = await response.json();
+    if (!selectedOrder) return;
 
-    if (!response.ok) {
-      throw new Error(result?.error?.message ?? "Không thể cập nhật đơn hàng.");
+    const updates: Record<string, unknown> = {};
+
+    if (statusDraft && statusDraft !== selectedOrder.status)
+      updates.statusOrder = statusDraft;
+
+    if (paymentDraft && paymentDraft !== selectedOrder.paymentStatus)
+      updates.paymentStatus = paymentDraft;
+
+    if (Object.keys(updates).length === 0) {
+      showFeedback("Không có thay đổi để lưu.");
+      return;
     }
 
-    // 🟩 FIX parse đúng data
-    const updatedOrder = mapOrder(result.data);
+    if ((updates as any).statusOrder === "delivered") {
+      showFeedback("Trạng thái 'Đã giao' chỉ do khách hàng xác nhận.");
+      return;
+    }
 
-    // 🟩 Update danh sách để UI thấy ngay
-    setOrders((prev) =>
-      prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
-    );
+    try {
+      setUpdatingOrderId(selectedOrder.id);
+      setApiError(null);
 
-    setSelectedOrderId(updatedOrder.id);
+      // 🚀 FIX ENDPOINT HERE
+      const response = await fetch(`${API_ROOT}/orders/manager/${selectedOrder.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resolvedToken}`,
+        },
+        body: JSON.stringify({ data: updates }),
+      });
 
-    showFeedback("Đã cập nhật đơn hàng.");
+      if (response.status === 401) {
+        handleAuthError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
+        return;
+      }
 
-    // 🟩 REFRESH lại danh sách (silent)
-    const rid = updatedOrder?.restaurant?.id ?? selectedRestaurantId;
-    if (rid) fetchOrders(rid, { silent: true });
+      const result = await response.json();
+      console.log(' Update order response:', result);
+      if (!response.ok) {
+        throw new Error(result?.error?.message ?? "Không thể cập nhật đơn hàng.");
+      }
 
-  } catch (err: any) {
-    setApiError(err.message ?? "Có lỗi khi cập nhật đơn hàng.");
-  } finally {
-    setUpdatingOrderId(null);
-  }
-}, [paymentDraft, resolvedToken, selectedOrder, showFeedback, statusDraft]);
+      // 🟩 FIX parse đúng data
+      const updatedOrder = mapOrder(result.data);
+
+      // 🟩 Update danh sách để UI thấy ngay
+      setOrders((prev) =>
+        prev.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
+      );
+
+      setSelectedOrderId(updatedOrder.id);
+
+      showFeedback("Đã cập nhật đơn hàng.");
+
+      // 🟩 REFRESH lại danh sách (silent)
+      const rid = updatedOrder?.restaurant?.id ?? selectedRestaurantId;
+      if (rid) fetchOrders(rid, { silent: true });
+
+      // ===== NEW: trigger drone API when status changed to delivering ======
+      // Some backends name this endpoint differently; try common variants.
+      if ((updates as any).statusOrder === "delivering") {
+        const tryTrigger = async () => {
+          const variants = [
+            `${API_ROOT}/orders/trigger-drone/${updatedOrder.id}`,
+          ];
+
+          for (const url of variants) {
+            try {
+              console.log("Attempting trigger drone via", url);
+              const res = await fetch(url, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${resolvedToken}` },
+              });
+              if (res.ok) {
+                console.log("trigger drone OK", url);
+                return true;
+              }
+              console.warn("trigger drone failed", url, res.status);
+            } catch (e) {
+              console.warn("trigger drone error", url, e);
+            }
+          }
+
+          return false;
+        };
+
+        try {
+          const ok = await tryTrigger();
+          if (ok) {
+            showFeedback("Đã khởi động drone (backend). Đang chuyển sang trạng thái giao.");
+            // refresh to pick up route & any drone metadata
+            if (rid) await fetchOrders(rid, { silent: true });
+          } else {
+            showFeedback("Không thể khởi động drone — backend có thể không hỗ trợ endpoint này.");
+            console.warn("Trigger drone attempts all failed");
+          }
+        } catch (e) {
+          console.warn("trigger drone unexpected error", e);
+        }
+      }
+
+    } catch (err: any) {
+      setApiError(err.message ?? "Có lỗi khi cập nhật đơn hàng.");
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  }, [paymentDraft, resolvedToken, selectedOrder, showFeedback, statusDraft, handleAuthError, fetchOrders, selectedRestaurantId]);
 
   const handleRefresh = useCallback(() => {
     if (typeof selectedRestaurantId !== "number" || !Number.isFinite(selectedRestaurantId)) {
@@ -822,7 +896,7 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ width: '100%', maxWidth: 1200, margin: '0 auto' }}>
       <div
         style={{
           background: "linear-gradient(135deg, #ff6f2c 0%, #e25a00 100%)",
@@ -866,9 +940,9 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
         <SummaryCard label="Đã giao" value={deliveredOrders} accent="#0ea5e9" />
       </div>
 
-        {selectedRestaurantLabel && (
-          <p style={{ color: "#6b7280", marginBottom: 16 }}>{selectedRestaurantLabel}</p>
-        )}
+      {selectedRestaurantLabel && (
+        <p style={{ color: "#6b7280", marginBottom: 16 }}>{selectedRestaurantLabel}</p>
+      )}
 
       <div
         style={{
@@ -934,11 +1008,11 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             flexWrap: "wrap",
           }}
         >
-            <button
+          <button
             type="button"
             onClick={() => {
               setStatusFilter("all");
-                setPaymentFilter("paid");
+              setPaymentFilter("paid");
               setSearchTerm("");
             }}
             style={{
@@ -1019,13 +1093,14 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
                     background: "linear-gradient(135deg, #fff5eb 0%, #ffe8d6 100%)",
                   }}
                 >
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Mã đơn</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Khách hàng</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Liên hệ</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Tổng tiền</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Trạng thái</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Thanh Toán</th>
-                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00" }}>Tạo lúc</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Mã đơn</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Khách hàng</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Liên hệ</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Tổng tiền</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Trạng thái</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Thanh Toán</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Tạo lúc</th>
+                  <th style={{ padding: "10px 12px", fontWeight: 600, color: "#e25a00", justifyContent: "center" }}>Xem</th>
                 </tr>
               </thead>
               <tbody>
@@ -1250,6 +1325,86 @@ export default function OrderManagement({ token: tokenProp, user: userProp }: Or
             >
               {updatingOrderId === selectedOrder.id ? "Đang lưu..." : "Lưu thay đổi"}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowDroneTracking(true)}
+              style={{
+                background: "#3b82f6",
+                color: "white",
+                borderRadius: 9999,
+                border: "none",
+                padding: "10px 24px",
+                fontWeight: 600,
+                cursor: "pointer",
+                marginLeft: 12,
+                marginTop: 16,
+              }}
+            >
+              🛰️ Drone Tracking
+            </button>
+          </div>
+        )}
+        
+        {/* Drone Modal */}
+        {showDroneTracking && selectedOrder && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              background: "rgba(0,0,0,0.45)",
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(2px)",
+            }}
+          >
+            <div
+              style={{
+                width: "90%",
+                height: "85%",
+                background: "#fff",
+                borderRadius: 16,
+                overflow: "hidden",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                position: "relative",
+              }}
+            >
+              
+
+              {/* If locations are missing or invalid, show a clear message instead of rendering a broken map */}
+              {(!selectedOrder.restaurant.location || !selectedOrder.customerLocation) ? (
+                <div style={{ padding: 24 }}>
+                  <h3 style={{ marginTop: 0 }}>⚠️ Không thể theo dõi Drone</h3>
+                  <p>Đơn hàng này chưa có đầy đủ tọa độ của nhà hàng hoặc vị trí khách. Vui lòng kiểm tra thông tin vị trí trong Strapi.</p>
+                  <div style={{ marginTop: 16 }}>
+                    <button onClick={() => setShowDroneTracking(false)} style={{ background: '#ff6f2c', padding: '10px 16px', border: 'none', borderRadius: 10, cursor: 'pointer' }}>Đóng</button>
+                  </div>
+                </div>
+              ) : (
+                <DroneTestWeb
+                  orderId={String(selectedOrder.id)}
+                  order={{
+                    statusOrder: selectedOrder.status,
+                    restaurant: {
+                      location: {
+                        lat: selectedOrder.restaurant.location?.lat ?? 0,
+                        lng: selectedOrder.restaurant.location?.lng ?? 0,
+                      }
+                    },
+                    customerLocation: {
+                      lat: selectedOrder.customerLocation?.lat ?? 0,
+                      lng: selectedOrder.customerLocation?.lng ?? 0,
+                    },
+                    route: selectedOrder.route?.map(p => [p.lat, p.lng]) ?? [],
+                  }}
+                  onClose={() => setShowDroneTracking(false)}
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -72,7 +72,9 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
       filters: { restaurant: restaurantId },
       populate: {
         restaurant: {
-            populate: ["image"]
+            populate: {
+                 image: true,
+            }
           },
         drone: true,
         users_permissions_user: true,
@@ -94,7 +96,9 @@ module.exports = createCoreController("api::order.order", ({ strapi }) => ({
     const order = await strapi.entityService.findOne("api::order.order", id, {
       populate: {
         restaurant: {
-            populate: ["image"]
+            populate: {
+                 image: true,
+            }
           },
         drone: true,
         users_permissions_user: true,

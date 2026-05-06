@@ -20,7 +20,7 @@ const MainLayout = ({ page, setPage, content, onLogout, user }: Props) => {
         <Sidebar page={page} setPage={setPage} onLogout={onLogout} />
 
           <div className="flex-1 flex items-start justify-center px-10 py-10 overflow-y-auto">
-            <div className="w-full max-w-5xl bg-[#fffaf2] rounded-[32px] min-h-[70vh] shadow-[0_12px_40px_rgba(255,138,31,0.12)] p-10">
+            <div className="w-full max-w-6xl bg-[#fffaf2] rounded-[32px] min-h-[70vh] shadow-[0_12px_40px_rgba(255,138,31,0.12)] p-10">
             {content ? (
               content
             ) : (

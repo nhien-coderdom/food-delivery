@@ -1,236 +1,387 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Drone Map</title>
-
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Mapbox GL JS v1.13 — phù hợp WebView -->
-  <link
-    href="https://api.mapbox.com/mapbox-gl-js/v1.13.0/mapbox-gl.css"
-    rel="stylesheet"
-  />
-
+  <meta charset="UTF-8" />
+  <title>Drone Map (WebView)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/v1.13.0/mapbox-gl.css" rel="stylesheet" />
   <style>
-    html, body {
+    html, body, #map {
       margin: 0;
       padding: 0;
       height: 100%;
-    }
-    #map {
       width: 100%;
-      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    .label-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+    .dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    .label {
+      margin-top: 4px;
+      background: rgba(255,255,255,0.95);
+      padding: 3px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #111;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .info {
+      position: absolute;
+      z-index: 999;
+      left: 10px;
+      top: 10px;
+      background: rgba(255,255,255,0.95);
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      font-size: 13px;
+      color: #111;
+      max-width: 45%;
+    }
+    .close-btn {
+      position: absolute;
+      z-index: 999;
+      right: 10px;
+      top: 10px;
+      background: #ff6f2c;
+      color: white;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
     }
   </style>
 </head>
-
 <body>
+  <div id="map"></div>
 
-<div id="map"></div>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v1.13.0/mapbox-gl.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
-<script src="https://api.mapbox.com/mapbox-gl-js/v1.13.0/mapbox-gl.js"></script>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    /********** CONFIG & STATE **********/
+    let ORDER_ID = null;
+    let RESTAURANT = null;
+    let CUSTOMER = null;
+    let STATUS = null;
+    let API_URL = null;
+    let USER_ID = null;
 
-<script>
-/* ============================================================
-   GLOBAL STATE
-============================================================ */
-let ORDER_ID = null;
-let RESTAURANT = null;
-let CUSTOMER = null;
-let STATUS = null;
-let API_URL = "http://172.20.10.3:1337";
+    const WAREHOUSE = { lat: 10.760596, lng: 106.681948 };
 
-let WAREHOUSE = { lat: 10.760596, lng: 106.681948 };
+    let routeCoords = []; // store as [lng, lat]
+    let socket = null;
+    let mapLoaded = false;
 
-let routeCoords = [];
-let socket = null;
+    let droneMarker = null;
+    let warehouseMarker = null;
+    let restaurantMarker = null;
+    let customerMarker = null;
 
-let mapLoaded = false;
+    let SOCKET_JOINED = false;
+    let DRONE_STARTED = false;
 
-// ngăn reset route nhiều lần
-let DRONE_STARTED = false;
+    /********** HELPERS **********/
+    function isValidLng(v) { return typeof v === "number" && isFinite(v) && v >= -180 && v <= 180; }
+    function isValidLat(v) { return typeof v === "number" && isFinite(v) && v >= -90 && v <= 90; }
+    function isValidPointObj(o){ return o && isValidLat(Number(o.lat)) && isValidLng(Number(o.lng)); }
+    function isValidPair(a){ return Array.isArray(a) && isValidLng(Number(a[0])) && isValidLat(Number(a[1])); }
 
-/* ============================================================
-   INIT MAP
-============================================================ */
-mapboxgl.accessToken = "pk.eyJ1IjoibmduaGllbiIsImEiOiJjbWh0MWpsc3oxcnplMmxvOTJmNnJqMnZlIn0.s2xJurMq7xiCUGhPUHeTEg";
-
-const map = new mapboxgl.Map({
-  container: "map",
-  style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-  center: [WAREHOUSE.lng, WAREHOUSE.lat],
-  zoom: 13
-});
-
-let droneMarker = null;
-let warehouseMarker = null;
-let restaurantMarker = null;
-let customerMarker = null;
-
-map.on("load", () => {
-  mapLoaded = true;
-  if (routeCoords.length > 1) updateRoute();
-});
-
-/* ============================================================
-   DRAW MARKERS
-============================================================ */
-function drawMarkers() {
-  if (!warehouseMarker) {
-    warehouseMarker = new mapboxgl.Marker({ color: "#0066ff" })
-      .setLngLat([WAREHOUSE.lng, WAREHOUSE.lat])
-      .addTo(map);
-  }
-
-  if (RESTAURANT && !restaurantMarker) {
-    restaurantMarker = new mapboxgl.Marker({ color: "#00c853" })
-      .setLngLat([RESTAURANT.lng, RESTAURANT.lat])
-      .addTo(map);
-  }
-
-  if (CUSTOMER && !customerMarker) {
-    customerMarker = new mapboxgl.Marker({ color: "#ff1744" })
-      .setLngLat([CUSTOMER.lng, CUSTOMER.lat])
-      .addTo(map);
-  }
-}
-
-/* ============================================================
-   UPDATE ROUTE
-============================================================ */
-function updateRoute() {
-  if (!mapLoaded) {
-    map.once("load", updateRoute);
-    return;
-  }
-
-  if (routeCoords.length < 2) return;
-
-  const geo = {
-    type: "Feature",
-    geometry: { type: "LineString", coordinates: routeCoords }
-  };
-
-  if (map.getSource("route-src")) {
-    map.getSource("route-src").setData(geo);
-  } else {
-    map.addSource("route-src", { type: "geojson", data: geo });
-
-    map.addLayer({
-      id: "route-line",
-      type: "line",
-      source: "route-src",
-      paint: {
-        "line-color": "#FF6B35",
-        "line-width": 4
+    function normalizeIncomingPoint(p){
+      // accept object {lat,lng} or array [lat,lng] or [lng,lat]
+      if (!p) return null;
+      if (Array.isArray(p) && p.length >= 2) {
+        const a = Number(p[0]), b = Number(p[1]);
+        if (isValidLat(a) && isValidLng(b)) return [b, a]; // [lat,lng] -> [lng,lat]
+        if (isValidLng(a) && isValidLat(b)) return [a, b]; // [lng,lat]
+        return null;
       }
+      if (typeof p === "object" && p.lat !== undefined && p.lng !== undefined) {
+        const lat = Number(p.lat), lng = Number(p.lng);
+        if (isValidLat(lat) && isValidLng(lng)) return [lng, lat];
+      }
+      return null;
+    }
+
+    function toPairFromObj(obj){
+      if (!obj) return null;
+      const lat = Number(obj.lat), lng = Number(obj.lng);
+      if (isValidLat(lat) && isValidLng(lng)) return [lng, lat];
+      return null;
+    }
+
+    function createLabeledMarker(point, color, label){
+      const wrapper = document.createElement("div");
+      wrapper.className = "label-wrapper";
+
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      dot.style.background = color;
+
+      const lbl = document.createElement("div");
+      lbl.className = "label";
+      lbl.innerText = label;
+
+      wrapper.appendChild(dot);
+      wrapper.appendChild(lbl);
+
+      return new mapboxgl.Marker(wrapper).setLngLat(point).addTo(map);
+    }
+
+    function ensureDroneMarker(pos){
+      if (!pos || !isValidPair(pos)) return;
+      if (!droneMarker) {
+        droneMarker = createLabeledMarker({lng: pos[0], lat: pos[1]}, "orange", "Drone");
+      } else {
+        droneMarker.setLngLat(pos);
+      }
+    }
+
+    /********** MAP INIT **********/
+    mapboxgl.accessToken = "YOUR_MAPBOX_ACCESS_TOKEN"; // TODO: Use environment variable or inject from host
+    const map = new mapboxgl.Map({
+      container: "map",
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      center: [WAREHOUSE.lng, WAREHOUSE.lat],
+      zoom: 12
     });
-  }
-}
 
-/* ============================================================
-   SOCKET REALTIME
-============================================================ */
-function connectSocket() {
-  if (!ORDER_ID) return;
+    map.on("load", () => {
+      mapLoaded = true;
+      // Add an empty source and layer for route to avoid race conditions
+      if (!map.getSource("route-src")) {
+        map.addSource("route-src", { type: "geojson", data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } } });
+        map.addLayer({ id: "route-line", type: "line", source: "route-src", paint: { "line-color": "#FF6B35", "line-width": 4 } });
+      }
+      // draw markers if we already have data
+      drawMarkers();
+      if (routeCoords.length > 1) updateRoute();
+    });
 
-  socket = io(API_URL, {
-    transports: ["websocket"],
-    path: "/socket.io/"
-  });
+    /********** DRAW & UPDATE **********/
+    function drawMarkers(){
+      // Warehouse
+      if (!warehouseMarker) {
+        warehouseMarker = createLabeledMarker([WAREHOUSE.lng, WAREHOUSE.lat], "#0066ff", "Warehouse");
+      } else warehouseMarker.setLngLat([WAREHOUSE.lng, WAREHOUSE.lat]);
 
-  socket.on("connect", () => {
-    console.log("🟢 SOCKET CONNECTED");
+      // Restaurant
+      if (RESTAURANT && isValidPointObj(RESTAURANT)){
+        const p = toPairFromObj(RESTAURANT);
+        if (p){
+          if (!restaurantMarker) restaurantMarker = createLabeledMarker(p, "#00c853", "Restaurant");
+          else restaurantMarker.setLngLat(p);
+        }
+      }
 
-    // ⭐ JOIN ROOM CHUẨN BACKEND: order_12345
-    socket.emit("drone:join", `order_${ORDER_ID}`);
-  });
-
-  socket.on("drone:position", (d) => {
-    if (String(d.orderID) !== String(ORDER_ID)) return;
-
-    const pos = [d.lng, d.lat];
-
-    routeCoords.push(pos);
-    updateRoute();
-
-    if (!droneMarker) {
-      droneMarker = new mapboxgl.Marker({ color: "orange" })
-        .setLngLat(pos)
-        .addTo(map);
-    } else {
-      droneMarker.setLngLat(pos);
+      // Customer
+      if (CUSTOMER && isValidPointObj(CUSTOMER)){
+        const p = toPairFromObj(CUSTOMER);
+        if (p){
+          if (!customerMarker) customerMarker = createLabeledMarker(p, "#ff1744", "Customer");
+          else customerMarker.setLngLat(p);
+        }
+      }
     }
 
-    map.flyTo({ center: pos, zoom: 15 });
-  });
-}
-
-/* ============================================================
-   RECEIVE MESSAGE FROM React Native
-============================================================ */
-function handleMessage(event) {
-  let data;
-  try {
-    data = JSON.parse(event.data);
-  } catch (e) {
-    return;
-  }
-
-  console.log("📨 RECEIVED FROM RN:", data);
-
-  ORDER_ID = data.orderId;
-  RESTAURANT = data.restaurant;
-  CUSTOMER = data.customer;
-  STATUS = data.statusOrder;
-  API_URL = data.apiUrl;
-
-  drawMarkers();
-
-  /* ------------------------------
-     CASE 1 — ĐÃ GIAO (delivered)
-  ------------------------------ */
-  if (STATUS === "delivered" && Array.isArray(data.route)) {
-    routeCoords = data.route.map((p) => [p.lng, p.lat]);
-    updateRoute();
-
-    if (routeCoords.length > 0) {
-      const last = routeCoords.at(-1);
-      droneMarker = new mapboxgl.Marker({ color: "orange" })
-        .setLngLat(last)
-        .addTo(map);
+    function updateRoute(){
+      if (!mapLoaded) { map.once("load", updateRoute); return; }
+      const src = map.getSource("route-src");
+      if (!Array.isArray(routeCoords) || routeCoords.length < 2) {
+        if (src && src.setData) src.setData({ type: "Feature", geometry: { type: "LineString", coordinates: [] } });
+        return;
+      }
+      const geo = { type: "Feature", geometry: { type: "LineString", coordinates: routeCoords } };
+      if (src && src.setData) src.setData(geo);
     }
-  }
 
-  /* ------------------------------
-     CASE 2 — READY (bắt đầu hành trình)
-  ------------------------------ */
-  if (STATUS === "ready" && !DRONE_STARTED) {
-    DRONE_STARTED = true;
+    /********** SOCKET **********/
+    function connectSocket(){
+      if (!API_URL) {
+        console.warn("[DRONE MAP] API_URL not set; cannot connect socket");
+        return;
+      }
+      if (socket) {
+        console.log("[DRONE MAP] socket exists, skipping connect");
+        return;
+      }
 
-    routeCoords = [];
+      const base = API_URL.replace(/\/+$/, "");
+      socket = io(base, { transports: ["websocket"], path: "/socket.io/" });
 
-    fetch(`${API_URL}/api/orders/trigger-drone/${ORDER_ID}`, {
-      method: "POST"
-    }).catch(console.log);
-  }
+      socket.on("connect", () => {
+        console.log("[DRONE MAP] socket connected", socket.id);
+        if (USER_ID) socket.emit("identify", USER_ID);
+        // join both variants to be resilient with backend naming
+        if (ORDER_ID) {
+          socket.emit("drone:join", ORDER_ID);
+          socket.emit("drone:join", `order_${ORDER_ID}`);
+        }
+      });
 
-  /* ------------------------------
-     CASE 3 — REALTIME (drone bay)
-  ------------------------------ */
-  if (STATUS === "ready" || STATUS === "delivering") {
-    connectSocket();
-  }
-}
+      socket.on("drone:position", (d) => {
+        try {
+          if (!d) return;
+          // if ORDER_ID not assigned on our side, accept first event's orderID
+          if (!ORDER_ID && d.orderID) {
+            ORDER_ID = String(d.orderID);
+            console.log("[DRONE MAP] ORDER_ID set from event:", ORDER_ID);
+            // also attempt to join room variants for safety
+            socket.emit("drone:join", ORDER_ID);
+            socket.emit("drone:join", `order_${ORDER_ID}`);
+          }
+          if (ORDER_ID && String(d.orderID) !== String(ORDER_ID)) return;
 
-/* Android */
-document.addEventListener("message", handleMessage);
-/* iOS */
-window.addEventListener("message", handleMessage);
+          const norm = normalizeIncomingPoint([d.lat, d.lng]) || normalizeIncomingPoint([d.lng, d.lat]);
+          // better: check both ways; server sends lat,lng keys - normalizeIncomingPoint handles arrays & objects below too
+          let p = null;
+          if (!norm) {
+            // try object
+            p = normalizeIncomingPoint({ lat: d.lat, lng: d.lng });
+          } else p = norm;
 
-</script>
+          if (!p) {
+            console.warn("[DRONE MAP] invalid position payload", d);
+            return;
+          }
 
+          routeCoords.push(p);
+          updateRoute();
+          ensureDroneMarker(p);
+          // center/fly to drone
+          map.flyTo({ center: p, zoom: 15, speed: 0.8, curve: 1 });
+        } catch (e) {
+          console.error("[DRONE MAP] drone:position handler error", e);
+        }
+      });
+
+      socket.on("drone:arrived", (d) => {
+        console.log("[DRONE MAP] drone:arrived", d);
+        // notify React Native host
+        sendMessageToHost({ type: "drone:arrived", payload: d });
+      });
+
+      socket.on("connect_error", (err) => console.warn("[DRONE MAP] connect_error", err));
+      socket.on("disconnect", (reason) => {
+        console.log("[DRONE MAP] socket disconnect", reason);
+        // keep socket variable null so we can reconnect later if needed
+        try { socket.off(); } catch(e){}
+        socket = null;
+      });
+    }
+
+    function disconnectSocket(){
+      try {
+        if (socket) { socket.off(); socket.disconnect(); socket = null; }
+      } catch(e){}
+    }
+
+    /********** COMMUNICATION WITH RN **********/
+    function sendMessageToHost(obj){
+      const message = JSON.stringify(obj);
+      // React Native WebView expects window.ReactNativeWebView.postMessage
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(message);
+      } else {
+        // fallback for desktop testing
+        window.parent.postMessage(message, "*");
+      }
+    }
+
+    function handleMessage(event){
+      let payload = null;
+      try {
+        payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+      } catch(e){
+        console.warn("[DRONE MAP] invalid message from host", event.data);
+        return;
+      }
+      if (!payload) return;
+      console.log("[DRONE MAP] RECEIVED FROM HOST:", payload);
+
+      // update config
+      if (payload.apiUrl) API_URL = payload.apiUrl;
+      if (payload.userId) USER_ID = payload.userId;
+      if (payload.statusOrder) STATUS = payload.statusOrder;
+
+      // parse orderId
+      if (payload.orderId) {
+        ORDER_ID = String(payload.orderId);
+      }
+
+      // parse restaurant/customer
+      if (payload.restaurant) {
+        const r = payload.restaurant;
+        if (typeof r.lat !== "undefined" && typeof r.lng !== "undefined") {
+          RESTAURANT = { lat: Number(r.lat), lng: Number(r.lng) };
+        } else if (r.location && r.location.lat !== undefined) {
+          RESTAURANT = { lat: Number(r.location.lat), lng: Number(r.location.lng) };
+        }
+      }
+      if (payload.customer) {
+        const c = payload.customer;
+        if (typeof c.lat !== "undefined" && typeof c.lng !== "undefined") {
+          CUSTOMER = { lat: Number(c.lat), lng: Number(c.lng) };
+        } else if (c.location && c.location.lat !== undefined) {
+          CUSTOMER = { lat: Number(c.location.lat), lng: Number(c.location.lng) };
+        }
+      }
+
+      // draw / update markers
+      drawMarkers();
+
+      // accept history route payload (ex: when order is delivered and RN re-sends route)
+      if (Array.isArray(payload.route) && payload.route.length > 0) {
+        const parsed = [];
+        for (const item of payload.route) {
+          const norm = normalizeIncomingPoint(item) || normalizeIncomingPoint([item.lat, item.lng]) || normalizeIncomingPoint([item.lng, item.lat]);
+          if (norm) parsed.push(norm);
+        }
+        if (parsed.length > 0) {
+          routeCoords = parsed;
+          updateRoute();
+          const last = routeCoords[routeCoords.length - 1];
+          ensureDroneMarker(last);
+          map.flyTo({ center: last, zoom: 13 });
+        }
+      }
+
+      // if API_URL available, connect socket (if not already)
+      if (API_URL && !socket) {
+        connectSocket();
+      }
+    }
+
+    // message listeners for Android / iOS / desktop
+    document.addEventListener("message", handleMessage);
+    window.addEventListener("message", handleMessage);
+
+    // debug API for console
+    window.__DRONE_MAP__ = {
+      setApiUrl: (u) => { API_URL = u; console.log("API_URL set", API_URL); },
+      setOrderId: (id) => { ORDER_ID = id; console.log("ORDER_ID set", ORDER_ID); },
+      connectSocket,
+      disconnectSocket,
+      route: () => routeCoords.slice()
+    };
+
+    // cleanup
+    window.addEventListener("beforeunload", () => { disconnectSocket(); });
+
+    console.log("[DRONE MAP] ready - waiting for host message");
+  </script>
 </body>
 </html>

@@ -8,7 +8,12 @@ module.exports = {
   bootstrap({ strapi }) {
     const io = new Server(strapi.server.httpServer, {
       cors: {
-        origin: ["*", "http://localhost:8081", "http://172.20.10.3:8081"],
+        origin: ["http://localhost:8081", // client
+      "http://172.20.10.3:8081", // client mạng LAN
+      "http://localhost:5173", // manager
+      "http://172.20.10.3:5173", // manager mạng LAN nếu cần
+      "http://localhost:1337", // backend test
+      ],
         methods: ["GET", "POST"],
         credentials: false,
       },
