@@ -1,2 +1,5 @@
 my-app/.expo/
 restaurant-app/.expo/
+.env
+*.env
+**/.env
